@@ -166,7 +166,7 @@ const Message = ({ message }) => {
         <div className={`relative flex items-center group w-full ${isMyMessage ? "justify-end" : "justify-start"}`}>
             
             {/* Actions Menu (Absolute overlay to prevent layout shift) */}
-            {showActions && !message.isDeleted && (
+            {showActions && !message.isDeleted && message.messageType !== 'call' && (
                 <div className={`absolute top-full mt-1 ${isMyMessage ? "right-0" : "left-0"} flex items-center gap-1 bg-white dark:bg-stone-800 shadow-xl border border-gray-100 dark:border-stone-700 rounded-lg p-1 z-50`}>
                     <div className="relative flex items-center group/react">
                         <button className="p-1.5 text-gray-500 hover:text-yellow-500 hover:bg-yellow-50 dark:hover:bg-stone-700 rounded transition peer"><BsEmojiSmile /></button>
@@ -209,7 +209,16 @@ const Message = ({ message }) => {
             >
               <div className="flex items-end gap-2">
                 <span className="break-all break-words whitespace-pre-wrap min-w-0 flex-1">
-                    {message.isDeleted ? "🚫 This message was deleted" : message?.message}
+                    {message.isDeleted ? "🚫 This message was deleted" : 
+                        (message.messageType === 'call' ? 
+                            <span className="flex items-center gap-2 font-medium">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                                </svg>
+                                {message?.message}
+                            </span> 
+                        : message?.message)}
                 </span>
                 
                 {message.isEdited && !message.isDeleted && (

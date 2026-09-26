@@ -7,6 +7,7 @@ const userSlice = createSlice({
     otherUsers: null,   // null = not yet loaded, [] = loaded but empty
     selectedUser: sessionStorage.getItem("selectedUser") ? JSON.parse(sessionStorage.getItem("selectedUser")) : null,
     onlineUsers: [],
+    typingUsers: [], // Array of user IDs currently typing
   },
   reducers: {
     setAuthUser: (state, action) => {
@@ -59,10 +60,18 @@ const userSlice = createSlice({
         user.unreadCount = 0;
       }
     },
+    addTypingUser: (state, action) => {
+      if (!state.typingUsers.includes(action.payload)) {
+        state.typingUsers.push(action.payload);
+      }
+    },
+    removeTypingUser: (state, action) => {
+      state.typingUsers = state.typingUsers.filter((id) => id !== action.payload);
+    },
   },
 });
 
-export const { setAuthUser, setOtherUsers, setSelectedUser, setOnlineUsers, updateUserList, clearUnread } = userSlice.actions;
+export const { setAuthUser, setOtherUsers, setSelectedUser, setOnlineUsers, updateUserList, clearUnread, addTypingUser, removeTypingUser } = userSlice.actions;
 
 export default userSlice.reducer;
 

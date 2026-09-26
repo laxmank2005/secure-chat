@@ -7,7 +7,7 @@ export const sendMessage = async (req, res) => {
     try {
         const senderId = req.id;
         const receiverId = req.params.id;
-        const { message, isEncrypted = false, replyTo } = req.body;
+        const { message, messageType = "text", isEncrypted = false, replyTo } = req.body;
 
         // Prevent self-messaging
         if (senderId === receiverId) {
@@ -38,6 +38,7 @@ export const sendMessage = async (req, res) => {
             senderId,
             receiverId,
             message,
+            messageType,
             isEncrypted,
             replyTo: replyTo || null,
             status: isReceiverOnline ? "delivered" : "sent"

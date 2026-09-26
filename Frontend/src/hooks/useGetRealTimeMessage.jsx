@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { addMessage, updateMessageStatus, markAllMessagesRead, updateMessage, updateMessageReactions } from "../redux/messageSlice";
-import { updateUserList, clearUnread } from "../redux/userSlice";
+import { updateUserList, clearUnread, addTypingUser, removeTypingUser } from "../redux/userSlice";
 import { 
   importPublicKey, 
   deriveSharedSecret, 
@@ -136,12 +136,22 @@ const useGetRealTimeMessage = () => {
             dispatch(updateMessageReactions({ messageId, reactions }));
         };
 
+        const handleGlobalTyping = ({ senderId }) => {
+            dispatch(addTypingUser(senderId));
+        };
+
+        const handleGlobalStopTyping = ({ senderId }) => {
+            dispatch(removeTypingUser(senderId));
+        };
+
         socket?.on("newMessage", handleNewMessage);
         socket?.on("messageStatusUpdate", handleMessageStatusUpdate);
         socket?.on("messagesRead", handleMessagesRead);
         socket?.on("messageEdited", handleMessageEdited);
         socket?.on("messageDeleted", handleMessageDeleted);
         socket?.on("messageReactionUpdated", handleMessageReactionUpdated);
+        socket?.on("typing", handleGlobalTyping);
+        socket?.on("stopTyping", handleGlobalStopTyping);
 
         return () => {
             socket?.off("newMessage", handleNewMessage);
@@ -150,6 +160,8 @@ const useGetRealTimeMessage = () => {
             socket?.off("messageEdited", handleMessageEdited);
             socket?.off("messageDeleted", handleMessageDeleted);
             socket?.off("messageReactionUpdated", handleMessageReactionUpdated);
+            socket?.off("typing", handleGlobalTyping);
+            socket?.off("stopTyping", handleGlobalStopTyping);
         };
     }, [socket, dispatch]); // Only re-register when socket changes — refs handle the rest
 };

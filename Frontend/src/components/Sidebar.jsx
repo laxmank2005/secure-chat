@@ -9,6 +9,7 @@ import { setAuthUser, setSelectedUser, setOtherUsers } from '../redux/userSlice'
 import { setMessages } from '../redux/messageSlice';
 import { API_ENDPOINTS } from '../config/api';
 import ThemeToggle from './ThemeToggle';
+import { clearPrivateKey } from '../utils/keyStore';
 
 const Sidebar = () => {
   const [search, setSearch] = useState("");
@@ -31,17 +32,21 @@ const Sidebar = () => {
   }, []);
 
   const logoutHandler = async () => {
+    const authUserObj = JSON.parse(localStorage.getItem("authUser"));
     try {
-      const res = await axios.get(API_ENDPOINTS.USER.LOGOUT);
+      await axios.get(API_ENDPOINTS.USER.LOGOUT);
+    } catch (error) {
+      console.log(error);
+    } finally {
+      if (authUserObj?._id) {
+        await clearPrivateKey(authUserObj._id);
+      }
       localStorage.removeItem("authUser");
       navigate("/login");
-      toast.success(res.data.message);
       dispatch(setAuthUser(null));
       dispatch(setSelectedUser(null));
       dispatch(setOtherUsers(null));
       dispatch(setMessages([]));
-    } catch (error) {
-      console.log(error);
     }
   };
 

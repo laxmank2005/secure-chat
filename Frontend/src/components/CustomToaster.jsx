@@ -42,31 +42,29 @@ const ToastCard = ({ t }) => {
     <div
       role="alert"
       aria-live="polite"
+      className="bg-white dark:bg-[#1a1a1a] text-gray-800 dark:text-stone-100 border border-gray-100 dark:border-stone-800 shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-xl"
       style={{
         opacity: t.visible ? 1 : 0,
         transform: t.visible ? "translateY(0) scale(1)" : "translateY(-10px) scale(0.95)",
-        transition: "opacity 200ms ease, transform 200ms ease",
+        transition: "opacity 200ms cubic-bezier(0.2, 1, 0.3, 1), transform 200ms cubic-bezier(0.2, 1, 0.3, 1)",
         willChange: "opacity, transform",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: "12px",
-        padding: "12px 16px 12px 12px",
-        borderRadius: "8px",
-        fontSize: "14px",
+        gap: "14px",
+        padding: "14px 18px",
+        borderRadius: "14px",
+        fontSize: "14.5px",
         fontWeight: "500",
         fontFamily: "Inter, system-ui, sans-serif",
         lineHeight: "1.4",
-        maxWidth: "400px",
-        minWidth: "300px",
-        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-        background: "#1e1e1e",
-        color: "#ffffff",
+        maxWidth: "420px",
+        minWidth: "320px",
         cursor: "default",
         pointerEvents: "auto",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", flex: 1 }}>
         {/* Icon */}
         <div style={{ flexShrink: 0, display: "flex" }}>
           {isSuccess && <SuccessIcon />}
@@ -83,24 +81,10 @@ const ToastCard = ({ t }) => {
       <button
         onClick={(e) => { e.stopPropagation(); toast.dismiss(t.id); }}
         aria-label="Dismiss notification"
-        style={{
-          flexShrink: 0,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: "4px",
-          color: "#9ca3af",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: "4px",
-          transition: "color 150ms",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#f3f4f6")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "#9ca3af")}
+        className="flex shrink-0 items-center justify-center p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-stone-500 dark:hover:text-stone-300 dark:hover:bg-stone-800 transition-colors focus:outline-none"
       >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <svg width="15" height="15" viewBox="0 0 14 14" fill="none">
+          <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
     </div>

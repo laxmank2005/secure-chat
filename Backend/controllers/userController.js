@@ -307,9 +307,46 @@ export const getConversationUsers = async (req, res) => {
 
     // Re-sort to match the conversation order (most recent first)
     const userMap = new Map(users.map(u => [u._id.toString(), u]));
-    const orderedUsers = otherUserIds
-      .map(id => userMap.get(id.toString()))
-      .filter(Boolean);
+    const orderedUsers = [];
+    
+    // Import Messages model if not already imported at top
+    const { Messages } = await import("../models/messageModel.js");
+
+    for (const id of otherUserIds) {
+      const user = userMap.get(id.toString());
+      if (user) {
+        // Calculate unread count
+        const unreadCount = await Messages.countDocuments({
+          senderId: id,
+          receiverId: loggedInUserId,
+          status: { $in: ["sent", "delivered"] }
+        });
+
+        user.unreadCount = unreadCount;
+        user.hasUnread = unreadCount > 0;
+
+        // Get last message
+        const lastMessageDoc = await Messages.findOne({
+          $or: [
+            { senderId: id, receiverId: loggedInUserId },
+            { senderId: loggedInUserId, receiverId: id }
+          ]
+        }).sort({ createdAt: -1 });
+
+        if (lastMessageDoc) {
+          if (lastMessageDoc.messageType === "call") {
+            user.lastMessage = "Video call";
+          } else if (lastMessageDoc.isEncrypted) {
+            user.lastMessage = "Encrypted message";
+          } else {
+            user.lastMessage = lastMessageDoc.message;
+          }
+          user.lastMessageTime = lastMessageDoc.createdAt;
+        }
+
+        orderedUsers.push(user);
+      }
+    }
 
     return res.status(200).json({
       success: true,

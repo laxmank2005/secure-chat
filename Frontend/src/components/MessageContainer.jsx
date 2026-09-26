@@ -4,15 +4,16 @@ import Messages from "./Messages";
 import { useDispatch, useSelector } from "react-redux";
 import { setSelectedUser } from "../redux/userSlice";
 import { clearUnread } from "../redux/userSlice";
-import { setMessages } from "../redux/messageSlice";
+import { setMessages, addMessage } from "../redux/messageSlice";
 import { API_ENDPOINTS } from "../config/api";
+import axios from "axios";
 
 const MessageContainer = () => {
-  const { selectedUser, authUser, onlineUsers } = useSelector((store) => store.user);
+  const { selectedUser, authUser, onlineUsers, typingUsers } = useSelector((store) => store.user);
   const { socket } = useSelector(store => store.socket);
   const dispatch = useDispatch();
   const isOnline = onlineUsers?.includes(selectedUser?._id) || false;
-  const [isTyping, setIsTyping] = useState(false);
+  const isTyping = typingUsers?.includes(selectedUser?._id) || false;
 
   /* Initials avatar fallback */
   const getInitials = (name = "") =>
@@ -42,25 +43,6 @@ const MessageContainer = () => {
     };
     markRead();
   }, [selectedUser?._id, dispatch]);
-
-  // Listen for typing indicator from the selected user
-  useEffect(() => {
-    if (!socket || !selectedUser) return;
-
-    const handleTyping = ({ senderId }) => {
-      if (senderId === selectedUser._id) setIsTyping(true);
-    };
-    const handleStopTyping = ({ senderId }) => {
-      if (senderId === selectedUser._id) setIsTyping(false);
-    };
-
-    socket.on("typing", handleTyping);
-    socket.on("stopTyping", handleStopTyping);
-    return () => {
-      socket.off("typing", handleTyping);
-      socket.off("stopTyping", handleStopTyping);
-    };
-  }, [socket, selectedUser]);
 
   if (!selectedUser) {
     return (
@@ -167,6 +149,23 @@ const MessageContainer = () => {
               // Dispatch a global event or update Redux to show the VideoCall UI
               // We'll use a custom window event for simplicity to communicate with App.jsx
               window.dispatchEvent(new CustomEvent('startVideoCall', { detail: roomId }));
+
+              // Log call history message
+              axios.post(
+                API_ENDPOINTS.MESSAGE.SEND(selectedUser._id),
+                { message: "Video call started", messageType: "call", isEncrypted: false },
+                {
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${authUser?.token}` },
+                  withCredentials: true,
+                }
+              ).then((res) => {
+                  const realMessage = res.data.newMessage;
+                  realMessage.message = "Video call started"; // plain text for local view
+                  realMessage.senderId = realMessage.senderId?.toString?.() ?? realMessage.senderId;
+                  
+                  // Instantly show the call message in local chat window
+                  dispatch(addMessage(realMessage));
+              }).catch(err => console.error("Failed to log call message:", err));
             }}
             className="p-2 rounded-xl text-violet-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 transition"
             title="Start Video Call"

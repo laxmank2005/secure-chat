@@ -20,9 +20,10 @@ const colorFor = (name = "") => {
 
 const OtherUser = ({ user }) => {
   const dispatch = useDispatch();
-  const { selectedUser, onlineUsers } = useSelector(store => store.user);
+  const { selectedUser, onlineUsers, typingUsers } = useSelector(store => store.user);
   const isOnline = onlineUsers?.includes(user._id);
   const isSelected = selectedUser?._id === user._id;
+  const isTyping = typingUsers?.includes(user._id);
 
   const selectedUserHandler = () => {
     dispatch(setSelectedUser(user));
@@ -75,14 +76,16 @@ const OtherUser = ({ user }) => {
           >
             {user.fullName}
           </p>
-          {user.lastMessageTime && (
+          {user.lastMessageTime && !isTyping && (
             <span className="text-[10px] text-gray-400 dark:text-stone-500 flex-shrink-0">
               {new Date(user.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
         </div>
-        <p className={`text-xs truncate mt-0.5 ${user.hasUnread ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400 dark:text-stone-500'}`}>
-          {user.lastMessage ? (
+        <p className={`text-xs truncate mt-0.5 ${user.hasUnread || isTyping ? 'font-medium' : 'text-gray-400 dark:text-stone-500'} ${isTyping ? 'text-violet-500' : (user.hasUnread ? 'text-gray-900 dark:text-white' : '')}`}>
+          {isTyping ? (
+            <span className="italic">Typing...</span>
+          ) : user.lastMessage ? (
             user.lastMessage
           ) : isOnline ? (
             <span className="text-emerald-500 font-medium">Online</span>

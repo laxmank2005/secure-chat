@@ -15,6 +15,11 @@ const messageModel = new mongoose.Schema({
         type: String,
         required: true
     },
+    messageType: {
+        type: String,
+        enum: ["text", "call"],
+        default: "text"
+    },
     isEncrypted: {
         type: Boolean,
         default: false

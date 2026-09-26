@@ -287,7 +287,7 @@ const Register = () => {
         <div className="absolute top-0 left-0 w-[400px] h-[400px] rounded-full bg-violet-100/50 dark:bg-violet-900/20 blur-[100px] -z-0" />
         <div className="absolute bottom-0 right-0 w-[300px] h-[300px] rounded-full bg-violet-100/40 dark:bg-violet-900/20 blur-[80px] -z-0" />
 
-        <div className="w-full max-w-md relative z-10 px-5 sm:px-0">
+        <div className="w-full max-w-lg relative z-10 px-5 sm:px-0">
           {/* ══════════════════════════════════════════════════════════ */}
           {/* VIEW 1: OTP VERIFICATION VIEW                             */}
           {/* ══════════════════════════════════════════════════════════ */}
