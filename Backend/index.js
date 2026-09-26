@@ -7,6 +7,7 @@ import connectDB from "./config/database.js";
 import userRoutes from "./routes/userRoutes.js";
 import cookieParser from "cookie-parser";
 import messageRoutes from "./routes/messageRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -150,6 +151,10 @@ connectDB();
 // API Routes
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/message", messageRoutes);
+app.use("/api/v1/message/upload", uploadRoutes);
+
+// Serve uploads folder statically so frontend can download the encrypted blobs
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Health check
 app.get("/api/health", (req, res) => {

@@ -5,7 +5,8 @@ import { updateUserList, clearUnread, addTypingUser, removeTypingUser } from "..
 import { 
   importPublicKey, 
   deriveSharedSecret, 
-  decryptMessage 
+  decryptMessage,
+  decryptGroupKey
 } from "../utils/crypto";
 import { getPrivateKey } from "../utils/keyStore";
 import { API_ENDPOINTS } from "../config/api";
@@ -43,20 +44,34 @@ const useGetRealTimeMessage = () => {
             let decryptedText = newMessage.message;
             if (newMessage.isEncrypted) {
                 try {
-                    // Find sender in otherUsers using string comparison
-                    const sender = (otherUsersRef.current || []).find(
-                        u => u._id?.toString() === senderIdStr
-                    ) || newMessage.senderObj;
-                    
                     const myPrivateKey = await loadMyPrivateKey();
+                    
+                    // Check if receiverId matches a known group chat
+                    const group = (otherUsersRef.current || []).find(u => u.isGroup && u._id?.toString() === receiverIdStr);
 
-                    if (sender?.publicKey && myPrivateKey) {
-                        const theirPublicKey = await importPublicKey(sender.publicKey);
-                        const sharedSecret = await deriveSharedSecret(myPrivateKey, theirPublicKey);
-                        decryptedText = await decryptMessage(newMessage.message, sharedSecret);
+                    if (group && group.encryptedGroupKeys && myPrivateKey) {
+                        const myKeyObj = group.encryptedGroupKeys.find(k => k.userId.toString() === authUserRef.current?._id?.toString());
+                        if (myKeyObj && group.encryptorPublicKey) {
+                            const encryptorPublicKey = await importPublicKey(group.encryptorPublicKey);
+                            const sharedSecret = await deriveSharedSecret(myPrivateKey, encryptorPublicKey);
+                            const groupKey = await decryptGroupKey(myKeyObj.encryptedKey, sharedSecret);
+                            decryptedText = await decryptMessage(newMessage.message, groupKey);
+                        }
+                    } else {
+                        // Regular 1-on-1 decryption
+                        const sender = (otherUsersRef.current || []).find(
+                            u => u._id?.toString() === senderIdStr
+                        ) || newMessage.senderObj;
+
+                        if (sender?.publicKey && myPrivateKey) {
+                            const theirPublicKey = await importPublicKey(sender.publicKey);
+                            const sharedSecret = await deriveSharedSecret(myPrivateKey, theirPublicKey);
+                            decryptedText = await decryptMessage(newMessage.message, sharedSecret);
+                        }
                     }
                 } catch (e) {
                     console.error("Failed to decrypt real-time message:", e);
+                    decryptedText = "[Encrypted message - could not decrypt]";
                 }
             }
 

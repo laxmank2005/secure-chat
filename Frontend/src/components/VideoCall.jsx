@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 
-const VideoCall = ({ roomID, userID, userName, onLeave }) => {
+const VideoCall = ({ roomID, userID, userName, isGroup, onLeave }) => {
   const videoContainerRef = useRef(null);
 
   useEffect(() => {
@@ -49,11 +49,11 @@ const VideoCall = ({ roomID, userID, userName, onLeave }) => {
         showScreenSharingButton: true,
         showTextChat: true,
         showUserList: true,
-        maxUsers: 2,
+        maxUsers: isGroup ? 10 : 2,
         layout: "Auto",
-        showLayoutButton: false,
+        showLayoutButton: isGroup,
         scenario: {
-          mode: ZegoUIKitPrebuilt.OneONoneCall, // Use constant instead of string for better compatibility
+          mode: isGroup ? ZegoUIKitPrebuilt.GroupCall : ZegoUIKitPrebuilt.OneONoneCall,
           config: {
             role: "Host",
           },

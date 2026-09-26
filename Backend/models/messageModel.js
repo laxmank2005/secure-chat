@@ -17,7 +17,7 @@ const messageModel = new mongoose.Schema({
     },
     messageType: {
         type: String,
-        enum: ["text", "call"],
+        enum: ["text", "call", "image", "file"],
         default: "text"
     },
     isEncrypted: {
@@ -29,6 +29,10 @@ const messageModel = new mongoose.Schema({
         enum: ["sent", "delivered", "read"],
         default: "sent"
     },
+    readBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+    }],
     replyTo: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Messages",

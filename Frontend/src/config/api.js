@@ -13,11 +13,18 @@ export const API_ENDPOINTS = {
     SEARCH: (query) => `${API_URL}/api/v1/user/search?query=${encodeURIComponent(query)}`,
   },
   MESSAGE: {
+    CREATE_GROUP: `${API_URL}/api/v1/message/group/create`,
+    GET_GROUP_INFO: (groupId) => `${API_URL}/api/v1/message/group/${groupId}`,
+    UPDATE_GROUP: (groupId) => `${API_URL}/api/v1/message/group/update/${groupId}`,
+    ADD_GROUP_MEMBER: (groupId) => `${API_URL}/api/v1/message/group/add/${groupId}`,
+    REMOVE_GROUP_MEMBER: (groupId) => `${API_URL}/api/v1/message/group/remove/${groupId}`,
+    UPDATE_GROUP_ADMIN: (groupId) => `${API_URL}/api/v1/message/group/admin/${groupId}`,
     SEND: (id) => `${API_URL}/api/v1/message/send/${id}`,
     GET: (id) => `${API_URL}/api/v1/message/${id}`,
     MARK_READ: (senderId) => `${API_URL}/api/v1/message/read/${senderId}`,
     EDIT: (msgId) => `${API_URL}/api/v1/message/edit/${msgId}`,
     DELETE: (msgId) => `${API_URL}/api/v1/message/delete/${msgId}`,
     REACT: (msgId) => `${API_URL}/api/v1/message/react/${msgId}`,
+    UPLOAD: `${API_URL}/api/v1/message/upload`,
   }
 };

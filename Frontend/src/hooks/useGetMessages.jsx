@@ -3,7 +3,7 @@ import axios from "axios";
 import { useSelector, useDispatch } from "react-redux";
 import { setMessages, appendMessages } from "../redux/messageSlice";
 import { API_ENDPOINTS } from "../config/api";
-import { importPublicKey, deriveSharedSecret, decryptMessage } from "../utils/crypto";
+import { importPublicKey, deriveSharedSecret, decryptMessage, decryptGroupKey } from "../utils/crypto";
 import { getPrivateKey } from "../utils/keyStore";
 
 const useGetMessages = () => {
@@ -38,7 +38,32 @@ const useGetMessages = () => {
       
       const myPrivateKey = authUser?._id ? await getPrivateKey(authUser._id.toString()) : null;
 
-      if (messages.length > 0 && selectedUser?.publicKey && myPrivateKey) {
+      if (messages.length > 0 && selectedUser?.isGroup && selectedUser.encryptedGroupKeys && myPrivateKey) {
+          try {
+            const myKeyObj = selectedUser.encryptedGroupKeys.find(k => k.userId.toString() === authUser._id.toString());
+            if (myKeyObj && selectedUser.encryptorPublicKey) {
+                const encryptorPublicKey = await importPublicKey(selectedUser.encryptorPublicKey);
+                const sharedSecret = await deriveSharedSecret(myPrivateKey, encryptorPublicKey);
+                const groupKey = await decryptGroupKey(myKeyObj.encryptedKey, sharedSecret);
+
+                messages = await Promise.all(
+                    messages.map(async (msg) => {
+                      if (msg.isEncrypted) {
+                        try {
+                          const decryptedText = await decryptMessage(msg.message, groupKey);
+                          return { ...msg, message: decryptedText };
+                        } catch (e) {
+                          return { ...msg, message: "[Encrypted group message - could not decrypt]" };
+                        }
+                      }
+                      return msg;
+                    })
+                  );
+            }
+          } catch (cryptoErr) {
+              console.error("Failed to decrypt group message history:", cryptoErr);
+          }
+      } else if (messages.length > 0 && selectedUser?.publicKey && myPrivateKey) {
         try {
           const theirPublicKey = await importPublicKey(selectedUser.publicKey);
           const sharedSecret = await deriveSharedSecret(myPrivateKey, theirPublicKey);

@@ -1,19 +1,26 @@
 import React, { useEffect, useState } from "react";
 import SendInput from "./SendInput";
 import Messages from "./Messages";
+import GroupInfoModal from "./GroupInfoModal";
+import P2PTransferModal from "./P2PTransferModal";
 import { useDispatch, useSelector } from "react-redux";
 import { setSelectedUser } from "../redux/userSlice";
 import { clearUnread } from "../redux/userSlice";
 import { setMessages, addMessage } from "../redux/messageSlice";
 import { API_ENDPOINTS } from "../config/api";
 import axios from "axios";
+import { useWebRTC } from "../hooks/useWebRTC";
 
 const MessageContainer = () => {
   const { selectedUser, authUser, onlineUsers, typingUsers } = useSelector((store) => store.user);
   const { socket } = useSelector(store => store.socket);
   const dispatch = useDispatch();
+  const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
   const isOnline = onlineUsers?.includes(selectedUser?._id) || false;
   const isTyping = typingUsers?.includes(selectedUser?._id) || false;
+
+  // Initialize WebRTC P2P Hook
+  const { incomingTransfer, activeTransfer, requestTransfer, acceptTransfer, rejectTransfer, resetTransfer } = useWebRTC();
 
   /* Initials avatar fallback */
   const getInitials = (name = "") =>
@@ -75,10 +82,13 @@ const MessageContainer = () => {
         className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-white dark:bg-[#111] border-b border-gray-100 dark:border-stone-800 transition-colors"
         style={{ minHeight: '68px' }}
       >
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div 
+          className={`flex items-center gap-2 sm:gap-3 ${selectedUser?.isGroup ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-stone-800/50 p-1.5 -ml-1.5 rounded-xl transition-colors' : ''}`}
+          onClick={() => { if (selectedUser?.isGroup) setIsGroupInfoOpen(true) }}
+        >
           {/* Back button (mobile) */}
           <button
-            onClick={() => dispatch(setSelectedUser(null))}
+            onClick={(e) => { e.stopPropagation(); dispatch(setSelectedUser(null)); }}
             className="sm:hidden p-2.5 -ml-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-stone-800 transition active:scale-95"
             aria-label="Back to messages"
           >
@@ -107,9 +117,9 @@ const MessageContainer = () => {
           </div>
 
           {/* Name & status / typing indicator */}
-          <div>
+          <div className="flex-1 min-w-0">
             <h3
-              className="text-sm font-bold text-gray-900 dark:text-white leading-tight"
+              className="text-sm font-bold text-gray-900 dark:text-white leading-tight truncate"
               style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
             >
               {selectedUser?.fullName}
@@ -128,8 +138,8 @@ const MessageContainer = () => {
                 </span>
               </div>
             ) : (
-              <p className="text-xs mt-0.5" style={{ color: isOnline ? '#10b981' : '#9ca3af' }}>
-                {isOnline ? 'Online' : 'Offline'}
+              <p className="text-xs mt-0.5 truncate" style={{ color: isOnline ? '#10b981' : '#9ca3af' }}>
+                {selectedUser?.isGroup ? 'Group' : (isOnline ? 'Online' : 'Offline')}
               </p>
             )}
           </div>
@@ -139,16 +149,26 @@ const MessageContainer = () => {
         <div className="flex items-center gap-1">
           <button 
             onClick={() => {
-              // Create a unique room ID based on both users (alphabetical sort ensures same ID for both)
-              const roomId = [authUser._id, selectedUser._id].sort().join('_');
-              socket.emit('callUser', { 
-                receiverId: selectedUser._id, 
+              const isGroup = selectedUser.isGroup;
+              const roomId = isGroup ? selectedUser._id : [authUser._id, selectedUser._id].sort().join('_');
+              
+              const callEvent = isGroup ? 'callGroup' : 'callUser';
+              const callData = {
                 callerData: { _id: authUser._id, fullName: authUser.fullName, profilePhoto: authUser.profilePhoto },
-                roomId 
-              });
+                roomId
+              };
+              if (isGroup) {
+                callData.groupId = selectedUser._id;
+                callData.groupName = selectedUser.fullName;
+                callData.participants = selectedUser.participants;
+              } else {
+                callData.receiverId = selectedUser._id;
+              }
+              
+              socket.emit(callEvent, callData);
+
               // Dispatch a global event or update Redux to show the VideoCall UI
-              // We'll use a custom window event for simplicity to communicate with App.jsx
-              window.dispatchEvent(new CustomEvent('startVideoCall', { detail: roomId }));
+              window.dispatchEvent(new CustomEvent('startVideoCall', { detail: { roomId, isGroup } }));
 
               // Log call history message
               axios.post(
@@ -187,7 +207,25 @@ const MessageContainer = () => {
       <Messages />
 
       {/* ── Input ── */}
-      <SendInput />
+      <SendInput requestTransfer={requestTransfer} />
+
+      {/* ── Group Info Modal ── */}
+      {selectedUser?.isGroup && (
+        <GroupInfoModal 
+          isOpen={isGroupInfoOpen} 
+          onClose={() => setIsGroupInfoOpen(false)} 
+          groupId={selectedUser._id} 
+        />
+      )}
+
+      {/* ── P2P Transfer Modal ── */}
+      <P2PTransferModal 
+        incomingTransfer={incomingTransfer}
+        activeTransfer={activeTransfer}
+        acceptTransfer={acceptTransfer}
+        rejectTransfer={rejectTransfer}
+        resetTransfer={resetTransfer}
+      />
     </div>
   );
 };

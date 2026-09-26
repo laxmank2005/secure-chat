@@ -8,19 +8,27 @@ import { API_ENDPOINTS } from "../config/api";
 import { 
   importPublicKey, 
   deriveSharedSecret, 
-  encryptMessage 
+  encryptMessage,
+  decryptGroupKey
 } from "../utils/crypto";
 import { getPrivateKey } from "../utils/keyStore";
-import { BsEmojiSmile, BsX } from "react-icons/bs";
+import { BsEmojiSmile, BsX, BsPaperclip, BsLightningFill } from "react-icons/bs";
 
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
-const SendInput = () => {
+const SendInput = ({ requestTransfer }) => {
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   const inputRef = useRef();
+  const fileInputRef = useRef(null);
+  const p2pFileInputRef = useRef(null);
+  const abortControllerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const dispatch = useDispatch();
   
@@ -56,10 +64,38 @@ const SendInput = () => {
     }
   };
 
+  const cancelFile = () => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+    }
+    setSelectedFile(null);
+    setFilePreview(null);
+    setUploadProgress(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) { // 50MB limit
+      toast.error("File is too large. Max 50MB.");
+      return;
+    }
+    setSelectedFile(file);
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (e) => setFilePreview(e.target.result);
+      reader.readAsDataURL(file);
+    } else {
+      setFilePreview(null);
+    }
+  };
+
   const onSubmitHandler = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const text = message.trim();
-    if (!text || isSending) return;
+    if ((!text && !selectedFile) || isSending) return;
 
     if (selectedUser?._id === authUser?._id) {
       toast.error("You cannot send a message to yourself.");
@@ -74,7 +110,19 @@ const SendInput = () => {
         try {
             let messageToSend = text;
             let isMessageEncrypted = false;
-            if (selectedUser?.publicKey) {
+            if (selectedUser?.isGroup) {
+                const myKeyObj = selectedUser.encryptedGroupKeys?.find(k => k.userId.toString() === authUser._id.toString());
+                if (!myKeyObj || !selectedUser.creatorPublicKey) throw new Error("Missing group encryption keys.");
+                const myPrivateKey = await getPrivateKey(authUser._id.toString());
+                if (!myPrivateKey) throw new Error("Could not unlock private key.");
+
+                const creatorPublicKey = await importPublicKey(selectedUser.creatorPublicKey);
+                const sharedSecret = await deriveSharedSecret(myPrivateKey, creatorPublicKey);
+                const groupKey = await decryptGroupKey(myKeyObj.encryptedKey, sharedSecret);
+
+                messageToSend = await encryptMessage(text, groupKey);
+                isMessageEncrypted = true;
+            } else if (selectedUser?.publicKey) {
                 const myPrivateKey = authUser?._id ? await getPrivateKey(authUser._id.toString()) : null;
                 if (myPrivateKey) {
                     const theirPublicKey = await importPublicKey(selectedUser.publicKey);
@@ -104,7 +152,109 @@ const SendInput = () => {
         return;
     }
 
-    // Send/Reply mode
+    if (selectedFile) {
+        setIsSending(true);
+        try {
+            abortControllerRef.current = new AbortController();
+            
+            // 1. Encrypt file locally using dynamic import to avoid circular dependencies
+            const { encryptFile } = await import("../utils/crypto");
+            const { encryptedBlob, fileKeyBase64, ivBase64 } = await encryptFile(selectedFile);
+            
+            // 2. Upload to server
+            const formData = new FormData();
+            formData.append("file", encryptedBlob, selectedFile.name);
+            
+            const uploadRes = await axios.post(API_ENDPOINTS.MESSAGE.UPLOAD, formData, {
+                headers: { Authorization: `Bearer ${authUser?.token}` },
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    setUploadProgress(percentCompleted);
+                },
+                signal: abortControllerRef.current.signal
+            });
+            
+            const { fileUrl, fileName, mimeType, size } = uploadRes.data;
+            
+            // 3. Create JSON payload
+            const payload = JSON.stringify({
+                text: message.trim(),
+                fileUrl,
+                fileName: selectedFile.name,
+                mimeType: selectedFile.type, // Use original mimeType, not the generic upload stream one
+                size,
+                fileKeyBase64,
+                ivBase64
+            });
+
+            const finalMessageType = selectedFile.type.startsWith("image/") ? "image" : "file";
+            let messageToSend = payload;
+            let isMessageEncrypted = false;
+
+            if (selectedUser?.isGroup) {
+                const myKeyObj = selectedUser.encryptedGroupKeys?.find(k => k.userId.toString() === authUser._id.toString());
+                if (!myKeyObj || !selectedUser.encryptorPublicKey) throw new Error("Missing group encryption keys.");
+                const myPrivateKey = await getPrivateKey(authUser._id.toString());
+                if (!myPrivateKey) throw new Error("Could not unlock private key.");
+
+                const encryptorPublicKey = await importPublicKey(selectedUser.encryptorPublicKey);
+                const sharedSecret = await deriveSharedSecret(myPrivateKey, encryptorPublicKey);
+                const groupKey = await decryptGroupKey(myKeyObj.encryptedKey, sharedSecret);
+
+                messageToSend = await encryptMessage(payload, groupKey);
+                isMessageEncrypted = true;
+            } else if (selectedUser?.publicKey) {
+                const myPrivateKey = authUser?._id ? await getPrivateKey(authUser._id.toString()) : null;
+                if (myPrivateKey) {
+                    const theirPublicKey = await importPublicKey(selectedUser.publicKey);
+                    const sharedSecret = await deriveSharedSecret(myPrivateKey, theirPublicKey);
+                    messageToSend = await encryptMessage(payload, sharedSecret);
+                    isMessageEncrypted = true;
+                }
+            }
+
+            const res = await axios.post(
+                API_ENDPOINTS.MESSAGE.SEND(selectedUser?._id),
+                { message: messageToSend, isEncrypted: isMessageEncrypted, replyTo: replyingTo?._id, messageType: finalMessageType },
+                {
+                    headers: { Authorization: `Bearer ${authUser?.token}` },
+                    withCredentials: true,
+                }
+            );
+
+            // Optimistically add to UI
+            const realMessage = res.data.newMessage;
+            realMessage.message = payload; // local plaintext payload
+            realMessage.senderId = authUser._id?.toString();
+            
+            dispatch(setMessages([...(messagesRef.current || []), realMessage]));
+            dispatch(updateUserList({
+                userId: selectedUser._id,
+                isUnread: false,
+                lastMessage: mimeType.startsWith("image/") ? "📷 Photo" : "📄 File",
+                lastMessageTime: realMessage.createdAt || new Date().toISOString(),
+                userObj: selectedUser,
+            }));
+            
+            cancelFile();
+            setMessage("");
+            dispatch(setReplyingTo(null));
+        } catch (error) {
+            if (axios.isCancel(error)) {
+                toast.success("Upload cancelled");
+            } else {
+                toast.error("Failed to upload and send file.");
+                console.error(error);
+            }
+        } finally {
+            setIsSending(false);
+            setUploadProgress(0);
+            abortControllerRef.current = null;
+        }
+        return;
+    }
+
+    // Send/Reply mode (Text only)
     const tempMessage = {
       _id: `temp-${Date.now()}`,
       message: text,
@@ -122,7 +272,30 @@ const SendInput = () => {
       let messageToSend = text;
       let isMessageEncrypted = false;
 
-      if (selectedUser?.publicKey) {
+      if (selectedUser?.isGroup) {
+          try {
+              // Group Message E2EE
+              const myKeyObj = selectedUser.encryptedGroupKeys?.find(k => k.userId.toString() === authUser._id.toString());
+              if (!myKeyObj || !selectedUser.encryptorPublicKey) {
+                  throw new Error("Missing group encryption keys.");
+              }
+              const myPrivateKey = await getPrivateKey(authUser._id.toString());
+              if (!myPrivateKey) throw new Error("Could not unlock private key.");
+
+              const encryptorPublicKey = await importPublicKey(selectedUser.encryptorPublicKey);
+              const sharedSecret = await deriveSharedSecret(myPrivateKey, encryptorPublicKey);
+              const groupKey = await decryptGroupKey(myKeyObj.encryptedKey, sharedSecret);
+
+              messageToSend = await encryptMessage(text, groupKey);
+              isMessageEncrypted = true;
+          } catch (cryptoErr) {
+              console.error("Group Encryption failed:", cryptoErr);
+              toast.error("Encryption failed. Message not sent.");
+              dispatch(setMessages(messagesRef.current.filter(m => m._id !== tempMessage._id) || []));
+              setIsSending(false);
+              return;
+          }
+      } else if (selectedUser?.publicKey) {
         try {
           const myPrivateKey = authUser?._id ? await getPrivateKey(authUser._id.toString()) : null;
           if (myPrivateKey) {
@@ -185,12 +358,29 @@ const SendInput = () => {
     setMessage(e.target.value);
     if (!socket || !selectedUser) return;
 
-    socket.emit("typing", { receiverId: selectedUser._id });
+    if (selectedUser.isGroup) {
+      socket.emit("typingGroup", { participants: selectedUser.participants, groupId: selectedUser._id });
+    } else {
+      socket.emit("typing", { receiverId: selectedUser._id });
+    }
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      socket.emit("stopTyping", { receiverId: selectedUser._id });
+      if (selectedUser.isGroup) {
+        socket.emit("stopTypingGroup", { participants: selectedUser.participants, groupId: selectedUser._id });
+      } else {
+        socket.emit("stopTyping", { receiverId: selectedUser._id });
+      }
     }, 2000);
+  };
+
+  const handleP2PFileChange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (requestTransfer) {
+          requestTransfer(selectedUser._id, file);
+      }
+      e.target.value = null; // Reset
   };
 
   return (
@@ -208,10 +398,55 @@ const SendInput = () => {
         </div>
       )}
 
+      {/* Premium Compact Attachment Preview Modal */}
+      {selectedFile && (
+        <div className="absolute bottom-[calc(100%+16px)] left-4 right-4 sm:right-auto sm:left-4 sm:w-[320px] bg-white/95 dark:bg-[#121212]/95 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.12)] flex flex-col overflow-visible z-50 animate-in slide-in-from-bottom-3 fade-in duration-300">
+          
+          {/* Downward pointing triangle/tail matching the paperclip icon position */}
+          <div className="absolute -bottom-2 left-10 w-4 h-4 bg-white/95 dark:bg-[#121212]/95 border-b border-r border-gray-200/50 dark:border-white/10 rotate-45 shadow-sm z-[-1]"></div>
+
+          {/* Close Button (Floating Overlay) */}
+          <button 
+            type="button" 
+            onClick={cancelFile} 
+            className="absolute top-4 right-4 z-10 p-1.5 bg-black/40 hover:bg-black/60 text-white rounded-full transition backdrop-blur-md shadow-sm"
+          >
+            <BsX className="text-xl" />
+          </button>
+
+          {/* Content / Preview */}
+          <div className="relative h-[240px] w-full p-2">
+            {filePreview ? (
+              <div className="w-full h-full bg-gray-100 dark:bg-black/40 rounded-2xl overflow-hidden relative">
+                 <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
+              </div>
+            ) : (
+              <div className="w-full h-full bg-gray-100/80 dark:bg-white/5 rounded-2xl flex flex-col items-center justify-center gap-3 text-gray-400 dark:text-stone-500">
+                <div className="p-4 bg-white dark:bg-black/20 rounded-full shadow-sm">
+                   <BsPaperclip className="text-3xl" />
+                </div>
+                <div className="text-center px-4">
+                   <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate max-w-[250px]">{selectedFile.name}</p>
+                   <p className="text-[10px] mt-1.5 uppercase tracking-widest font-bold text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {selectedFile.name.split('.').pop()}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Upload Progress Bar */}
+          {uploadProgress > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-100 dark:bg-stone-800 rounded-b-3xl overflow-hidden">
+              <div className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full transition-all duration-300 ease-out" style={{ width: `${uploadProgress}%` }}></div>
+            </div>
+          )}
+        </div>
+      )}
+
       <form
         onSubmit={onSubmitHandler}
-        className="px-4 sm:px-5 py-4 pb-6 sm:pb-4 bg-white dark:bg-[#111] border-t border-gray-100 dark:border-stone-800 transition-colors flex flex-col"
+        className="px-4 sm:px-5 py-4 pb-6 sm:pb-4 bg-white dark:bg-[#111] border-t border-gray-100 dark:border-stone-800 transition-colors flex flex-col relative"
       >
+
         {/* Banner for Replying / Editing */}
         {(replyingTo || editingMessage) && (
             <div className="flex items-center justify-between bg-gray-100 dark:bg-stone-800 p-2 px-3 rounded-t-xl mb-1 text-sm border-l-4 border-violet-500">
@@ -220,7 +455,13 @@ const SendInput = () => {
                         {editingMessage ? "Editing Message" : `Replying to ${replyingTo.senderId.toString() === authUser?._id?.toString() ? "yourself" : selectedUser?.fullName}`}
                     </span>
                     <span className="truncate text-gray-600 dark:text-stone-400">
-                        {editingMessage ? editingMessage.message : replyingTo.message}
+                        {(() => {
+                            const msg = editingMessage || replyingTo;
+                            if (msg.messageType === 'image') return "📷 Photo";
+                            if (msg.messageType === 'file') return "📄 File";
+                            if (msg.messageType === 'call') return "📞 Call";
+                            return msg.message;
+                        })()}
                     </span>
                 </div>
                 <button type="button" onClick={cancelAction} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-stone-700 transition">
@@ -243,6 +484,38 @@ const SendInput = () => {
             <BsEmojiSmile className="text-xl" />
           </button>
 
+          {/* File Attachment toggle icon */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-shrink-0 text-gray-400 dark:text-stone-500 hover:text-violet-500 transition-colors"
+          >
+            <BsPaperclip className="text-xl" />
+          </button>
+
+          {/* P2P Direct File Transfer icon */}
+          <button
+            type="button"
+            onClick={() => p2pFileInputRef.current?.click()}
+            className="flex-shrink-0 text-blue-500 hover:text-blue-600 transition-colors bg-blue-100/50 dark:bg-blue-900/20 p-1.5 rounded-lg ml-1 mr-1"
+            title="P2P Direct Transfer (No Size Limit)"
+          >
+            <BsLightningFill className="text-lg" />
+          </button>
+          <input
+            type="file"
+            ref={p2pFileInputRef}
+            onChange={handleP2PFileChange}
+            className="hidden"
+          />
+
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange}
+            className="hidden" 
+          />
+
           {/* Input */}
           <input
             ref={inputRef}
@@ -259,9 +532,9 @@ const SendInput = () => {
           {/* Send/Save button */}
           <button
             type="submit"
-            disabled={!message.trim() || isSending}
+            disabled={(!message.trim() && !selectedFile) || isSending}
             className="flex-shrink-0 p-2 rounded-xl transition-all disabled:opacity-30"
-            style={{ color: message.trim() ? "#7C3AED" : "#9ca3af" }}
+            style={{ color: (message.trim() || selectedFile) ? "#7C3AED" : "#9ca3af" }}
           >
             {editingMessage ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

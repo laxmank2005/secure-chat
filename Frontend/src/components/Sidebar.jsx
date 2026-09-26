@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import OtherUsers from './OtherUsers';
 const NewChatModal = lazy(() => import('./NewChatModal'));
+import CreateGroupModal from './CreateGroupModal';
 import axios from 'axios';
 import { toast } from "react-hot-toast";
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +15,7 @@ import { clearPrivateKey } from '../utils/keyStore';
 const Sidebar = () => {
   const [search, setSearch] = useState("");
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
   const { otherUsers, authUser, selectedUser } = useSelector(store => store.user);
@@ -72,6 +74,17 @@ const Sidebar = () => {
           </div>
 
           <div className="flex items-center gap-1.5 relative" ref={profileMenuRef}>
+            {/* New Group button */}
+            <button
+              onClick={() => setIsCreateGroupOpen(true)}
+              title="New Group"
+              className="p-2.5 rounded-xl text-gray-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 dark:text-stone-400 transition-all"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </button>
+
             {/* New Chat button */}
             <button
               onClick={() => setIsNewChatOpen(true)}
@@ -218,6 +231,12 @@ const Sidebar = () => {
           />
         </Suspense>
       )}
+
+      {/* Create Group Modal */}
+      <CreateGroupModal 
+        isOpen={isCreateGroupOpen}
+        onClose={() => setIsCreateGroupOpen(false)}
+      />
     </>
   );
 };

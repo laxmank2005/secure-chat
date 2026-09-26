@@ -92,6 +92,34 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('typingGroup', ({ participants, groupId }) => {
+        if (!participants || !Array.isArray(participants)) return;
+        participants.forEach(participantId => {
+            if (participantId.toString() !== userId.toString()) {
+                const receiverSockets = userSocketMap[participantId.toString()];
+                if (receiverSockets && receiverSockets.length > 0) {
+                    receiverSockets.forEach(socketId => {
+                        io.to(socketId).emit('typing', { senderId: groupId, isGroup: true, actualUser: userId });
+                    });
+                }
+            }
+        });
+    });
+
+    socket.on('stopTypingGroup', ({ participants, groupId }) => {
+        if (!participants || !Array.isArray(participants)) return;
+        participants.forEach(participantId => {
+            if (participantId.toString() !== userId.toString()) {
+                const receiverSockets = userSocketMap[participantId.toString()];
+                if (receiverSockets && receiverSockets.length > 0) {
+                    receiverSockets.forEach(socketId => {
+                        io.to(socketId).emit('stopTyping', { senderId: groupId, isGroup: true, actualUser: userId });
+                    });
+                }
+            }
+        });
+    });
+
     // --- Video Calling Events ---
     socket.on('callUser', ({ receiverId, callerData, roomId }) => {
         const receiverSockets = userSocketMap[receiverId];
@@ -102,11 +130,63 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('callGroup', ({ groupId, groupName, participants, callerData, roomId }) => {
+        if (!participants || !Array.isArray(participants)) return;
+        participants.forEach(participant => {
+            const participantId = typeof participant === 'object' ? participant._id : participant;
+            if (participantId && participantId.toString() !== userId.toString()) {
+                const receiverSockets = userSocketMap[participantId.toString()];
+                if (receiverSockets && receiverSockets.length > 0) {
+                    receiverSockets.forEach(socketId => {
+                        io.to(socketId).emit('incomingCall', { callerData, roomId, isGroup: true, groupName });
+                    });
+                }
+            }
+        });
+    });
+
     socket.on('rejectCall', ({ callerId }) => {
         const callerSockets = userSocketMap[callerId];
         if (callerSockets && callerSockets.length > 0) {
             callerSockets.forEach(socketId => {
                 io.to(socketId).emit('callRejected');
+            });
+        }
+    });
+
+    // --- P2P WebRTC Direct File Transfer Events ---
+    socket.on('p2pTransferRequest', ({ receiverId, fileInfo, senderId }) => {
+        const receiverSockets = userSocketMap[receiverId];
+        if (receiverSockets && receiverSockets.length > 0) {
+            receiverSockets.forEach(socketId => {
+                io.to(socketId).emit('incomingP2PTransfer', { senderId, fileInfo });
+            });
+        }
+    });
+
+    socket.on('p2pTransferResponse', ({ senderId, accepted, receiverId }) => {
+        const senderSockets = userSocketMap[senderId];
+        if (senderSockets && senderSockets.length > 0) {
+            senderSockets.forEach(socketId => {
+                io.to(socketId).emit('p2pTransferResponse', { accepted, receiverId });
+            });
+        }
+    });
+
+    socket.on('p2pSignal', ({ targetId, signal, senderId }) => {
+        const targetSockets = userSocketMap[targetId];
+        if (targetSockets && targetSockets.length > 0) {
+            targetSockets.forEach(socketId => {
+                io.to(socketId).emit('p2pSignal', { senderId, signal });
+            });
+        }
+    });
+
+    socket.on('p2pTransferCanceled', ({ targetId }) => {
+        const targetSockets = userSocketMap[targetId];
+        if (targetSockets && targetSockets.length > 0) {
+            targetSockets.forEach(socketId => {
+                io.to(socketId).emit('p2pTransferCanceled');
             });
         }
     });

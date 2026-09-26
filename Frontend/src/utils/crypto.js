@@ -202,3 +202,130 @@ export const decryptMessage = async (encryptedBase64, sharedSecretKey) => {
     return "[Encrypted message - could not decrypt]";
   }
 };
+
+/**
+ * --- GROUP CHAT E2EE HELPERS ---
+ */
+
+/**
+ * Generate a random AES-GCM key for a Group Chat
+ */
+export const generateGroupKey = async () => {
+  return await window.crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true, // extractable so we can encrypt it and send to others
+    ["encrypt", "decrypt"]
+  );
+};
+
+/**
+ * Encrypt the AES Group Key using a pairwise shared secret
+ */
+export const encryptGroupKey = async (groupKey, sharedSecretKey) => {
+  // Export the group key to raw bytes
+  const rawGroupKey = await window.crypto.subtle.exportKey("raw", groupKey);
+  
+  const iv = new Uint8Array(12);
+  window.crypto.getRandomValues(iv);
+
+  const encryptedBuffer = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv },
+    sharedSecretKey,
+    rawGroupKey
+  );
+
+  const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encryptedBuffer), iv.length);
+
+  return arrayBufferToBase64(combined.buffer);
+};
+
+/**
+ * Decrypt the AES Group Key using a pairwise shared secret
+ */
+export const decryptGroupKey = async (encryptedGroupKeyBase64, sharedSecretKey) => {
+  const combinedBuffer = base64ToArrayBuffer(encryptedGroupKeyBase64);
+  const combined = new Uint8Array(combinedBuffer);
+  
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+
+  const rawGroupKeyBuffer = await window.crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv },
+    sharedSecretKey,
+    ciphertext
+  );
+
+  return await window.crypto.subtle.importKey(
+    "raw",
+    rawGroupKeyBuffer,
+    { name: "AES-GCM", length: 256 },
+    true, // Must be extractable so admins can re-encrypt it for new members
+    ["encrypt", "decrypt"]
+  );
+};
+
+/**
+ * --- FILE E2EE HELPERS ---
+ */
+
+/**
+ * Encrypt a File/Blob (returns encrypted Blob + exported Key + IV)
+ */
+export const encryptFile = async (fileBlob) => {
+  // Generate an ephemeral AES-GCM key specifically for this file
+  const fileKey = await window.crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
+  const iv = new Uint8Array(12);
+  window.crypto.getRandomValues(iv);
+
+  const arrayBuffer = await fileBlob.arrayBuffer();
+
+  const ciphertextBuffer = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv },
+    fileKey,
+    arrayBuffer
+  );
+
+  const rawKey = await window.crypto.subtle.exportKey("raw", fileKey);
+
+  return {
+    encryptedBlob: new Blob([ciphertextBuffer]),
+    fileKeyBase64: arrayBufferToBase64(rawKey),
+    ivBase64: arrayBufferToBase64(iv.buffer)
+  };
+};
+
+/**
+ * Decrypt a File/Blob using its exported Key and IV
+ */
+export const decryptFile = async (encryptedArrayBuffer, fileKeyBase64, ivBase64, mimeType) => {
+  try {
+    const rawKeyBuffer = base64ToArrayBuffer(fileKeyBase64);
+    const fileKey = await window.crypto.subtle.importKey(
+      "raw",
+      rawKeyBuffer,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"]
+    );
+
+    const ivBuffer = base64ToArrayBuffer(ivBase64);
+
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: ivBuffer },
+      fileKey,
+      encryptedArrayBuffer
+    );
+
+    return new Blob([decryptedBuffer], { type: mimeType });
+  } catch (error) {
+    console.error("Failed to decrypt file:", error);
+    throw error;
+  }
+};

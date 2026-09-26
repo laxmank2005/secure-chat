@@ -275,82 +275,145 @@ export const getConversationUsers = async (req, res) => {
     const loggedInUserId = req.id;
 
     // Find all conversations where the logged-in user is a participant
-    // Select ONLY participants and updatedAt — avoid loading huge messages arrays
     const conversations = await Conversation.find({
       participants: loggedInUserId
     })
-      .select("participants updatedAt")
+      .select("participants updatedAt isGroup groupName groupProfilePhoto encryptedGroupKeys groupAdmins")
       .sort({ updatedAt: -1 })
       .lean();
 
-    // Collect the OTHER participant IDs (excluding self), deduplicated
     const otherUserIds = [];
     const seen = new Set();
+    const groupConversations = [];
+
     for (const conv of conversations) {
-      for (const pid of conv.participants) {
-        const pidStr = pid.toString();
-        if (pidStr !== loggedInUserId && !seen.has(pidStr)) {
-          seen.add(pidStr);
-          otherUserIds.push(pid);
+      if (conv.isGroup) {
+        groupConversations.push(conv);
+      } else {
+        for (const pid of conv.participants) {
+          const pidStr = pid.toString();
+          if (pidStr !== loggedInUserId && !seen.has(pidStr)) {
+            seen.add(pidStr);
+            otherUserIds.push(pid);
+          }
         }
       }
     }
 
-    if (otherUserIds.length === 0) {
-      return res.status(200).json({ success: true, users: [] });
+    // Fetch the actual user documents for 1-on-1 chats
+    let users = [];
+    if (otherUserIds.length > 0) {
+      users = await User.find({ _id: { $in: otherUserIds } })
+        .select("fullName email mobile profilePhoto gender publicKey isEmailVerified")
+        .lean();
     }
 
-    // Fetch the actual user documents for those IDs as plain lean objects
-    const users = await User.find({ _id: { $in: otherUserIds } })
-      .select("fullName email mobile profilePhoto gender publicKey isEmailVerified")
-      .lean();
-
-    // Re-sort to match the conversation order (most recent first)
     const userMap = new Map(users.map(u => [u._id.toString(), u]));
-    const orderedUsers = [];
+    const orderedItems = [];
     
     // Import Messages model if not already imported at top
     const { Messages } = await import("../models/messageModel.js");
 
-    for (const id of otherUserIds) {
-      const user = userMap.get(id.toString());
-      if (user) {
-        // Calculate unread count
+    for (const conv of conversations) {
+      if (conv.isGroup) {
+        // Format group to look like a "User" for the frontend OtherUser component
         const unreadCount = await Messages.countDocuments({
-          senderId: id,
-          receiverId: loggedInUserId,
-          status: { $in: ["sent", "delivered"] }
+          receiverId: conv._id, // For groups, receiverId is the groupId
+          senderId: { $ne: loggedInUserId },
+          readBy: { $ne: loggedInUserId } // The current user has not read this message
         });
 
-        user.unreadCount = unreadCount;
-        user.hasUnread = unreadCount > 0;
-
-        // Get last message
         const lastMessageDoc = await Messages.findOne({
-          $or: [
-            { senderId: id, receiverId: loggedInUserId },
-            { senderId: loggedInUserId, receiverId: id }
-          ]
+          receiverId: conv._id
         }).sort({ createdAt: -1 });
+
+        const groupItem = {
+          _id: conv._id,
+          isGroup: true,
+          fullName: conv.groupName,
+          profilePhoto: conv.groupProfilePhoto || "", 
+          participants: conv.participants,
+          encryptedGroupKeys: conv.encryptedGroupKeys,
+          unreadCount: unreadCount,
+          hasUnread: unreadCount > 0,
+          creatorId: conv.groupAdmins[0],
+          encryptorPublicKey: null 
+        };
+
+        const myKeyObj = conv.encryptedGroupKeys.find(k => k.userId.toString() === loggedInUserId);
+        const encryptorId = myKeyObj?.encryptedBy || conv.groupAdmins[0];
+
+        // Fetch the encryptor's public key so the member can decrypt their group key
+        if (encryptorId) {
+            const encryptorIdStr = encryptorId.toString();
+            let encryptorUser = userMap.get(encryptorIdStr);
+            if (!encryptorUser) {
+                encryptorUser = await User.findById(encryptorIdStr).select("publicKey").lean();
+                if (encryptorUser) {
+                    userMap.set(encryptorIdStr, encryptorUser);
+                }
+            }
+            if (encryptorUser && encryptorUser.publicKey) {
+                groupItem.encryptorPublicKey = encryptorUser.publicKey;
+            }
+        }
 
         if (lastMessageDoc) {
           if (lastMessageDoc.messageType === "call") {
-            user.lastMessage = "Video call";
+            groupItem.lastMessage = "Video call";
           } else if (lastMessageDoc.isEncrypted) {
-            user.lastMessage = "Encrypted message";
+            groupItem.lastMessage = "Encrypted message";
           } else {
-            user.lastMessage = lastMessageDoc.message;
+            groupItem.lastMessage = lastMessageDoc.message;
           }
-          user.lastMessageTime = lastMessageDoc.createdAt;
+          groupItem.lastMessageTime = lastMessageDoc.createdAt;
         }
 
-        orderedUsers.push(user);
+        orderedItems.push(groupItem);
+      } else {
+        // 1-on-1 Chat logic
+        const otherParticipantId = conv.participants.find(id => id.toString() !== loggedInUserId);
+        if (!otherParticipantId) continue;
+        
+        const user = userMap.get(otherParticipantId.toString());
+        if (user && !seen.has(`added_${user._id}`)) {
+          seen.add(`added_${user._id}`); // Prevent duplicates
+
+          const unreadCount = await Messages.countDocuments({
+            senderId: user._id,
+            receiverId: loggedInUserId,
+            status: { $in: ["sent", "delivered"] }
+          });
+
+          user.unreadCount = unreadCount;
+          user.hasUnread = unreadCount > 0;
+
+          const lastMessageDoc = await Messages.findOne({
+            $or: [
+              { senderId: user._id, receiverId: loggedInUserId },
+              { senderId: loggedInUserId, receiverId: user._id }
+            ]
+          }).sort({ createdAt: -1 });
+
+          if (lastMessageDoc) {
+            if (lastMessageDoc.messageType === "call") {
+              user.lastMessage = "Video call";
+            } else if (lastMessageDoc.isEncrypted) {
+              user.lastMessage = "Encrypted message";
+            } else {
+              user.lastMessage = lastMessageDoc.message;
+            }
+            user.lastMessageTime = lastMessageDoc.createdAt;
+          }
+
+          orderedItems.push(user);
+        }
       }
     }
 
     return res.status(200).json({
       success: true,
-      users: orderedUsers,
+      users: orderedItems, // Frontend expects 'users' array, but it now contains groups too!
     });
   } catch (error) {
     console.error(error);

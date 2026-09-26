@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { setReplyingTo, setEditingMessage, updateMessageReactions, updateMessage } from "../redux/messageSlice";
 import axios from "axios";
-import { API_ENDPOINTS } from "../config/api";
-import { BsReplyFill, BsPencilSquare, BsTrashFill, BsEmojiSmile, BsCheck2All, BsCheck2 } from "react-icons/bs";
+import { API_ENDPOINTS, API_URL } from "../config/api";
+import { BsReplyFill, BsPencilSquare, BsTrashFill, BsEmojiSmile, BsCheck2All, BsCheck2, BsPaperclip, BsDownload, BsX } from "react-icons/bs";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -19,6 +19,11 @@ const Message = ({ message }) => {
   const [showActions, setShowActions] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const [decryptedFileUrl, setDecryptedFileUrl] = useState(null);
+  const [isFileLoading, setIsFileLoading] = useState(false);
+  const [filePayload, setFilePayload] = useState(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // In a 1-on-1 chat: if the sender is NOT the selected user, it must be MY message.
   const isMyMessage = message?.senderId?.toString() !== selectedUser?._id?.toString();
@@ -48,6 +53,68 @@ const Message = ({ message }) => {
       document.removeEventListener("touchstart", handleClickOutside);
     };
   }, [showActions]);
+
+  // File Decryption Effect
+  useEffect(() => {
+    let objectUrl = null;
+    if (!message.isDeleted && (message.messageType === "image" || message.messageType === "file")) {
+        try {
+            // Because of the strict E2EE, if the message failed to decrypt, it will be the string "[Encrypted message - could not decrypt]"
+            if (message.message.startsWith("[")) throw new Error("Message could not be decrypted");
+            
+            const payload = JSON.parse(message.message);
+            setFilePayload(payload);
+            
+            const fetchAndDecrypt = async (retries = 3) => {
+                setIsFileLoading(true);
+                try {
+                    // Construct correct URL (legacy files might have relative paths like /uploads/...)
+                    const fetchUrl = payload.fileUrl.startsWith('http') 
+                        ? payload.fileUrl 
+                        : `${API_URL}${payload.fileUrl.startsWith('/') ? '' : '/'}${payload.fileUrl}`;
+
+                    // Use native fetch to bypass axios global withCredentials config
+                    const res = await fetch(fetchUrl);
+                    if (!res.ok) throw new Error("Failed to fetch encrypted file: " + res.status);
+                    const encryptedArrayBuffer = await res.arrayBuffer();
+                    
+                    if (encryptedArrayBuffer.byteLength !== payload.size && payload.size) {
+                        console.warn(`Size mismatch! Got ${encryptedArrayBuffer.byteLength}, expected ${payload.size}. Cloudinary CDN might still be propagating.`);
+                    }
+
+                    const { decryptFile } = await import("../utils/crypto");
+                    const decryptedBlob = await decryptFile(encryptedArrayBuffer, payload.fileKeyBase64, payload.ivBase64, payload.mimeType);
+                    objectUrl = URL.createObjectURL(decryptedBlob);
+                    setDecryptedFileUrl(objectUrl);
+                } catch (e) {
+                    if (retries > 0) {
+                        console.warn(`Decryption or fetch failed (${e.name || e.message}). Retrying in 1.5s... (${retries} attempts left)`);
+                        setTimeout(() => fetchAndDecrypt(retries - 1), 1500);
+                        return; // exit current attempt
+                    }
+                    console.error("Failed to decrypt file after retries. Payload details:", {
+                        size: payload.size,
+                        keyLen: payload.fileKeyBase64?.length,
+                        ivLen: payload.ivBase64?.length,
+                        url: payload.fileUrl
+                    });
+                    console.error("Final decryption error:", e);
+                } finally {
+                    if (retries === 0 || objectUrl) {
+                        setIsFileLoading(false);
+                    }
+                }
+            };
+            fetchAndDecrypt();
+        } catch (e) {
+            console.error("Failed to parse file payload", e);
+        }
+    }
+    
+    return () => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+  }, [message.message, message.messageType, message.isDeleted]);
 
   const timeStr = message?.createdAt
     ? new Date(message.createdAt).toLocaleTimeString("en-US", {
@@ -158,7 +225,12 @@ const Message = ({ message }) => {
           <div 
             className={`text-xs p-2 rounded-lg bg-gray-100 dark:bg-stone-800 text-gray-500 dark:text-stone-400 mb-0.5 max-w-full truncate border-l-4 cursor-pointer hover:opacity-80 transition ${isMyMessage ? "border-violet-500" : "border-gray-400"}`}
           >
-             <span className="font-semibold">{repliedMessage.senderId.toString() === authUser?._id?.toString() ? "You" : selectedUser?.fullName}:</span> {repliedMessage.isDeleted ? "🚫 This message was deleted" : repliedMessage.message}
+             <span className="font-semibold">{repliedMessage.senderId.toString() === authUser?._id?.toString() ? "You" : selectedUser?.fullName}:</span> {repliedMessage.isDeleted ? "🚫 This message was deleted" : 
+                repliedMessage.messageType === 'image' ? "📷 Photo" :
+                repliedMessage.messageType === 'file' ? "📄 File" :
+                repliedMessage.messageType === 'call' ? "📞 Call" :
+                repliedMessage.message
+             }
           </div>
         )}
 
@@ -179,7 +251,7 @@ const Message = ({ message }) => {
                         </div>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); handleReply(); setShowActions(false); }} className="p-1.5 text-gray-500 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-stone-700 rounded transition"><BsReplyFill /></button>
-                    {isMyMessage && <button onClick={(e) => { e.stopPropagation(); handleEdit(); setShowActions(false); }} className="p-1.5 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-stone-700 rounded transition"><BsPencilSquare /></button>}
+                    {isMyMessage && message.messageType !== 'image' && message.messageType !== 'file' && <button onClick={(e) => { e.stopPropagation(); handleEdit(); setShowActions(false); }} className="p-1.5 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-stone-700 rounded transition"><BsPencilSquare /></button>}
                     {isMyMessage && <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(); setShowActions(false); }} disabled={isDeleting} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-stone-700 rounded transition"><BsTrashFill /></button>}
                 </div>
             )}
@@ -208,7 +280,7 @@ const Message = ({ message }) => {
               }
             >
               <div className="flex items-end gap-2">
-                <span className="break-all break-words whitespace-pre-wrap min-w-0 flex-1">
+                <span className="break-words whitespace-pre-wrap min-w-0 flex-1 [word-break:break-word]">
                     {message.isDeleted ? "🚫 This message was deleted" : 
                         (message.messageType === 'call' ? 
                             <span className="flex items-center gap-2 font-medium">
@@ -218,6 +290,54 @@ const Message = ({ message }) => {
                                 </svg>
                                 {message?.message}
                             </span> 
+                        : message.messageType === 'image' ? 
+                            <div className="flex flex-col gap-1 max-w-[220px] sm:max-w-[280px]">
+                                {isFileLoading ? (
+                                    <div className="w-full h-40 bg-white/20 animate-pulse rounded-lg flex items-center justify-center">
+                                        <span className="text-xs">Decrypting E2EE...</span>
+                                    </div>
+                                ) : (
+                                    decryptedFileUrl && (
+                                        <div className="relative group inline-block">
+                                            <img 
+                                                src={decryptedFileUrl} 
+                                                alt="attachment" 
+                                                className="rounded-lg object-cover max-h-64 cursor-zoom-in hover:opacity-90 transition w-full" 
+                                                onClick={(e) => { e.stopPropagation(); setIsPreviewOpen(true); }}
+                                                onLoad={() => scroll.current?.scrollIntoView({ behavior: "smooth" })}
+                                            />
+                                            <a 
+                                                href={decryptedFileUrl} 
+                                                download={filePayload?.fileName || "photo.png"} 
+                                                onClick={(e) => e.stopPropagation()} 
+                                                className="absolute top-2 right-2 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity backdrop-blur-sm shadow-sm"
+                                                title="Download Image"
+                                            >
+                                                <BsDownload className="text-sm" />
+                                            </a>
+                                        </div>
+                                    )
+                                )}
+                                {filePayload?.text && <span className="mt-1 text-[15px]">{filePayload.text}</span>}
+                            </div>
+                        : message.messageType === 'file' ? 
+                            <div className="flex flex-col gap-1 max-w-[220px] sm:max-w-[280px]">
+                                <div className="flex items-center gap-3 p-2 bg-black/10 dark:bg-white/10 rounded-lg">
+                                   <BsPaperclip className="text-2xl flex-shrink-0" />
+                                   <div className="flex flex-col min-w-0 flex-1">
+                                       <span className="text-sm font-semibold truncate">{filePayload?.fileName || "Encrypted File"}</span>
+                                       <span className="text-xs opacity-70">{filePayload?.size ? (filePayload.size / 1024 / 1024).toFixed(2) : "?"} MB</span>
+                                   </div>
+                                   {!isFileLoading && decryptedFileUrl ? (
+                                       <a href={decryptedFileUrl} download={filePayload?.fileName || "download"} className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition">
+                                          <BsDownload className="text-sm" />
+                                       </a>
+                                   ) : (
+                                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                   )}
+                                </div>
+                                {filePayload?.text && <span className="mt-1">{filePayload.text}</span>}
+                            </div>
                         : message?.message)}
                 </span>
                 
@@ -285,6 +405,37 @@ const Message = ({ message }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Full Screen Image Preview Lightbox */}
+      {isPreviewOpen && decryptedFileUrl && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-200"
+          onClick={(e) => { e.stopPropagation(); setIsPreviewOpen(false); }}
+        >
+            <img 
+                src={decryptedFileUrl} 
+                alt="Preview" 
+                className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl cursor-default"
+                onClick={(e) => e.stopPropagation()}
+            />
+            <button 
+                className="absolute top-4 right-4 p-3 text-white hover:bg-white/20 rounded-full transition"
+                onClick={(e) => { e.stopPropagation(); setIsPreviewOpen(false); }}
+                title="Close"
+            >
+                <BsX className="text-3xl" />
+            </button>
+            <a 
+                href={decryptedFileUrl} 
+                download={filePayload?.fileName || "photo.png"} 
+                className="absolute top-4 right-16 p-3 text-white hover:bg-white/20 rounded-full transition"
+                onClick={(e) => e.stopPropagation()}
+                title="Download"
+            >
+                <BsDownload className="text-xl" />
+            </a>
         </div>
       )}
     </div>

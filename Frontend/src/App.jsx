@@ -92,18 +92,18 @@ const App = () => {
   const { socket } = useSelector(store => store.socket);
   const dispatch = useDispatch();
 
-  const [activeCallRoomId, setActiveCallRoomId] = useState(null);
+  const [activeCallData, setActiveCallData] = useState(null);
   const [incomingCallData, setIncomingCallData] = useState(null);
 
   // Stable callback so VideoCall doesn't unmount on Redux updates
   const handleLeaveCall = React.useCallback(() => {
-    setActiveCallRoomId(null);
+    setActiveCallData(null);
   }, []);
 
   // Listen for custom window event to start a call
   useEffect(() => {
     const handleStartCall = (e) => {
-      setActiveCallRoomId(e.detail);
+      setActiveCallData(e.detail);
     };
     window.addEventListener('startVideoCall', handleStartCall);
     return () => window.removeEventListener('startVideoCall', handleStartCall);
@@ -123,20 +123,24 @@ const App = () => {
       });
 
       // --- Video Call Listeners ---
-      socketInstance.on('incomingCall', ({ callerData, roomId }) => {
-        setIncomingCallData({ callerData, roomId });
+      socketInstance.on('incomingCall', ({ callerData, roomId, isGroup, groupName }) => {
+        setIncomingCallData({ callerData, roomId, isGroup, groupName });
       });
 
       socketInstance.on('callRejected', () => {
         toast.error("Call was declined.");
-        setActiveCallRoomId(null);
+        setActiveCallData(null);
       });
 
       socketInstance.on('connect_error', (err) => {
         console.error("Socket connect error:", err.message);
-        toast.error("Session expired or connection failed. Please log in again.");
-        localStorage.removeItem("authUser");
-        dispatch(setAuthUser(null));
+        // Only log out if it's a hard authentication error (e.g., token expired).
+        // Otherwise, it's just a network blip or server restart, and socket.io will auto-reconnect.
+        if (err.message.startsWith("Authentication error")) {
+          toast.error("Session expired. Please log in again.");
+          localStorage.removeItem("authUser");
+          dispatch(setAuthUser(null));
+        }
       });
 
       return () => socketInstance.close();
@@ -148,12 +152,13 @@ const App = () => {
       }
     }
   }, [authUser]);
+
   return (
     <div className="min-h-[100dvh] w-full">
       <RouterProvider router={router} />
 
       {/* --- Active Video Call --- */}
-      {activeCallRoomId && authUser && (
+      {activeCallData && authUser && (
         <Suspense fallback={
           <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center text-white">
             <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -161,9 +166,10 @@ const App = () => {
           </div>
         }>
           <VideoCall 
-            roomID={activeCallRoomId} 
+            roomID={activeCallData.roomId} 
             userID={authUser._id} 
             userName={authUser.fullName}
+            isGroup={activeCallData.isGroup}
             onLeave={handleLeaveCall}
           />
         </Suspense>
@@ -186,10 +192,12 @@ const App = () => {
             </div>
             
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
-              {incomingCallData.callerData.fullName}
+              {incomingCallData.isGroup ? incomingCallData.groupName : incomingCallData.callerData.fullName}
             </h2>
             <p className="text-sm text-gray-500 dark:text-stone-400 mb-8">
-              Incoming video call...
+              {incomingCallData.isGroup 
+                ? `Incoming group video call from ${incomingCallData.callerData.fullName}...` 
+                : "Incoming video call..."}
             </p>
 
             <div className="flex items-center justify-center gap-4">
@@ -211,7 +219,7 @@ const App = () => {
 
               <button 
                 onClick={() => {
-                  setActiveCallRoomId(incomingCallData.roomId);
+                  setActiveCallData(incomingCallData);
                   setIncomingCallData(null);
                 }}
                 className="flex flex-col items-center gap-2 group animate-bounce"
