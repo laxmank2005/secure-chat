@@ -11,10 +11,22 @@ const Messages = () => {
   const endRef = useRef(null);
   const prevScrollHeight = useRef(0);
 
-  // Auto-scroll to bottom when a NEW message is received
+  const isFirstLoad = useRef(true);
+
+  // When selected user changes, messages is set to null, reset the flag.
   useLayoutEffect(() => {
-    if (prevScrollHeight.current === 0) {
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages === null) {
+      isFirstLoad.current = true;
+    }
+  }, [messages]);
+
+  // Auto-scroll to bottom
+  useLayoutEffect(() => {
+    if (prevScrollHeight.current === 0 && messages?.length > 0) {
+      endRef.current?.scrollIntoView({ 
+        behavior: isFirstLoad.current ? "auto" : "smooth" 
+      });
+      isFirstLoad.current = false;
     }
   }, [messages]);
 
@@ -58,35 +70,10 @@ const Messages = () => {
           <div className="w-5 h-5 border-2 border-t-transparent border-violet-500 rounded-full animate-spin"></div>
         </div>
       )}
-      {/* Loading skeleton */}
+      {/* Initial Loading Spinner */}
       {messages === null && (
-        <div className="flex flex-col gap-6 pt-4">
-          {[...Array(6)].map((_, i) => {
-            const isMyMessage = i % 2 !== 0;
-            const bubbleWidths = ['w-32', 'w-48', 'w-64', 'w-40', 'w-56', 'w-36'];
-
-            return (
-              <div key={i} className={`flex items-start gap-2.5 ${isMyMessage ? 'flex-row-reverse' : ''}`}>
-                {!isMyMessage && (
-                  <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-stone-800 animate-pulse flex-shrink-0 mt-0.5" />
-                )}
-
-                <div className={`flex flex-col gap-1 ${isMyMessage ? 'items-end' : 'items-start'}`}>
-                  {/* Sender Name & Time Skeleton */}
-                  <div className="flex items-center gap-2 px-1 mb-0.5">
-                    <div className="h-3 w-12 bg-gray-200 dark:bg-stone-800 rounded animate-pulse" />
-                    <div className="h-2.5 w-10 bg-gray-100 dark:bg-stone-800/60 rounded animate-pulse" />
-                  </div>
-
-                  {/* Chat Bubble Skeleton */}
-                  <div className={`h-10 rounded-2xl animate-pulse ${isMyMessage
-                      ? 'bg-violet-100 dark:bg-violet-900/20 rounded-br-sm'
-                      : 'bg-gray-100 dark:bg-stone-800 rounded-bl-sm'
-                    } ${bubbleWidths[i]}`} />
-                </div>
-              </div>
-            );
-          })}
+        <div className="flex-1 flex items-center justify-center h-full">
+          <div className="w-8 h-8 border-4 border-violet-100 dark:border-violet-900/30 border-t-violet-500 rounded-full animate-spin"></div>
         </div>
       )}
 
@@ -99,6 +86,8 @@ const Messages = () => {
               ? new Date(messages[index - 1].createdAt).toDateString()
               : null;
           const showDivider = currentDate !== previousDate;
+          
+          const getSenderIdStr = (msg) => (msg.senderId?._id ? msg.senderId._id.toString() : msg.senderId?.toString());
 
           return (
             <React.Fragment key={message._id}>
@@ -114,7 +103,14 @@ const Messages = () => {
                   <div className="flex-1 h-px bg-gray-100 dark:bg-stone-800" />
                 </div>
               )}
-              <Message message={message} />
+              <Message 
+                message={message} 
+                isConsecutive={
+                  index > 0 && 
+                  getSenderIdStr(messages[index - 1]) === getSenderIdStr(message) && 
+                  !showDivider
+                } 
+              />
             </React.Fragment>
           );
         })

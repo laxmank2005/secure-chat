@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
     VERIFY_OTP: `${API_URL}/api/v1/user/verify-otp`,
     RESEND_OTP: `${API_URL}/api/v1/user/resend-otp`,
     GET_OTHER_USERS: `${API_URL}/api/v1/user`,
+    UPDATE_PROFILE_PIC: `${API_URL}/api/v1/user/profile-pic`,
     SEARCH: (query) => `${API_URL}/api/v1/user/search?query=${encodeURIComponent(query)}`,
   },
   MESSAGE: {

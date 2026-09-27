@@ -17,21 +17,62 @@ const Sidebar = () => {
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isFabMenuOpen, setIsFabMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
+  const fabMenuRef = useRef(null);
+  const profilePicInputRef = useRef(null);
+  const [isUpdatingProfilePic, setIsUpdatingProfilePic] = useState(false);
   const { otherUsers, authUser, selectedUser } = useSelector(store => store.user);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // Close profile menu when clicking outside
+  // Close profile menu & FAB menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
         setIsProfileMenuOpen(false);
       }
+      if (fabMenuRef.current && !fabMenuRef.current.contains(event.target)) {
+        setIsFabMenuOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const handleProfilePicChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      return toast.error("File size should be less than 5MB");
+    }
+
+    try {
+      setIsUpdatingProfilePic(true);
+      const formData = new FormData();
+      formData.append("profilePic", file);
+
+      axios.defaults.withCredentials = true;
+      const res = await axios.put(API_ENDPOINTS.USER.UPDATE_PROFILE_PIC, formData, {
+        headers: { 
+          "Authorization": `Bearer ${authUser?.token}` 
+        },
+        withCredentials: true
+      });
+
+      if (res.data.success) {
+        toast.success("Profile picture updated!");
+        dispatch(setAuthUser(res.data.user));
+        localStorage.setItem("authUser", JSON.stringify(res.data.user));
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to update profile picture");
+    } finally {
+      setIsUpdatingProfilePic(false);
+      if (profilePicInputRef.current) profilePicInputRef.current.value = "";
+    }
+  };
 
   const logoutHandler = async () => {
     const authUserObj = JSON.parse(localStorage.getItem("authUser"));
@@ -59,43 +100,22 @@ const Sidebar = () => {
   return (
     <>
       <div
-        className={`flex-col h-full bg-white dark:bg-[#111] border-r border-gray-100 dark:border-stone-800 transition-colors duration-300 w-full sm:w-[320px] sm:min-w-[320px] shrink-0
+        className={`relative flex-col h-full bg-white dark:bg-[#111] border-r border-gray-100 dark:border-stone-800 transition-colors duration-300 w-full sm:w-[320px] sm:min-w-[320px] shrink-0
           ${selectedUser ? 'hidden sm:flex' : 'flex'}
         `}
       >
         {/* ── Top bar ── */}
         <div className="px-5 pt-7 pb-4 flex items-center justify-between">
           <div className="flex flex-col justify-center">
-            <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight leading-none"
+            <h1 className="text-xl font-extrabold text-gray-900 dark:text-white tracking-tight leading-none"
               style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-              Messages{' '}
+              Chats{' '}
               <span className="text-violet-500 font-bold">({totalUsers})</span>
             </h1>
           </div>
 
           <div className="flex items-center gap-1.5 relative" ref={profileMenuRef}>
-            {/* New Group button */}
-            <button
-              onClick={() => setIsCreateGroupOpen(true)}
-              title="New Group"
-              className="p-2.5 rounded-xl text-gray-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 dark:text-stone-400 transition-all"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
-            </button>
 
-            {/* New Chat button */}
-            <button
-              onClick={() => setIsNewChatOpen(true)}
-              title="New Chat"
-              className="p-2.5 rounded-xl text-gray-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 dark:text-stone-400 transition-all"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-            </button>
-            
             {/* Menu Button */}
             <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
@@ -115,11 +135,37 @@ const Sidebar = () => {
                 
                 {/* Profile Info inside Menu */}
                 <div className="flex items-center gap-3 mb-3 px-2">
-                  <img
-                    src={authUser?.profilePhoto}
-                    alt="me"
-                    className="w-10 h-10 rounded-full object-cover ring-2 ring-violet-200 dark:ring-violet-900/50"
-                  />
+                  <div 
+                    className="relative w-11 h-11 rounded-full cursor-pointer group flex-shrink-0 bg-gray-100 dark:bg-stone-800"
+                    onClick={() => !isUpdatingProfilePic && profilePicInputRef.current?.click()}
+                    title="Change Profile Picture"
+                  >
+                    <img
+                      src={authUser?.profilePhoto}
+                      alt="me"
+                      className={`w-11 h-11 rounded-full object-cover ring-2 ring-violet-200 dark:ring-violet-900/50 transition-all ${isUpdatingProfilePic ? 'opacity-50' : 'group-hover:opacity-60'}`}
+                    />
+                    {!isUpdatingProfilePic && (
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                          <circle cx="12" cy="13" r="4"></circle>
+                        </svg>
+                      </div>
+                    )}
+                    {isUpdatingProfilePic && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      ref={profilePicInputRef} 
+                      onChange={handleProfilePicChange} 
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-900 dark:text-white truncate" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
                       {authUser?.fullName}
@@ -180,13 +226,16 @@ const Sidebar = () => {
 
           {/* Loading skeleton — shown only while first fetch is in flight */}
           {isLoading && (
-            <div className="flex flex-col gap-1 px-2 pt-2">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-3 py-3 rounded-xl">
-                  <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-stone-800 animate-pulse flex-shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 rounded-full bg-gray-100 dark:bg-stone-800 animate-pulse w-2/3" />
-                    <div className="h-2.5 rounded-full bg-gray-100 dark:bg-stone-800 animate-pulse w-1/2" />
+            <div className="flex flex-col w-full">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-5 py-3 w-full border-b border-gray-50 dark:border-stone-800/50">
+                  <div className="w-[50px] h-[50px] rounded-full bg-gray-200/80 dark:bg-stone-800/80 animate-pulse flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-1.5 w-full">
+                      <div className="h-3.5 bg-gray-200/80 dark:bg-stone-800/80 rounded animate-pulse w-32" />
+                      <div className="h-2.5 bg-gray-100 dark:bg-stone-800/50 rounded animate-pulse w-10" />
+                    </div>
+                    <div className="h-3 bg-gray-100 dark:bg-stone-800/50 rounded animate-pulse w-48 max-w-[80%]" />
                   </div>
                 </div>
               ))}
@@ -206,7 +255,7 @@ const Sidebar = () => {
                 No conversations yet
               </h3>
               <p className="text-[13px] text-gray-400 dark:text-stone-500 mb-6 leading-relaxed max-w-[220px]">
-                Search for someone by their mobile number or email to start chatting!
+                Search for someone by their mobile number to start chatting!
               </p>
               <button
                 onClick={() => setIsNewChatOpen(true)}
@@ -219,6 +268,72 @@ const Sidebar = () => {
               </button>
             </div>
           )}
+
+          {/* Floating Action Button */}
+          <div className="absolute bottom-6 right-6 z-40" ref={fabMenuRef}>
+            {/* FAB Popup Menu */}
+            {isFabMenuOpen && (
+              <div className="absolute bottom-full mb-4 right-0 w-48 bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl border border-gray-100 dark:border-stone-800 py-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+                <button
+                  onClick={() => {
+                    setIsNewChatOpen(true);
+                    setIsFabMenuOpen(false);
+                  }}
+                  className="w-full px-4 py-3 text-left flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-stone-800 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                  </svg>
+                  Chat
+                </button>
+                <button
+                  onClick={() => {
+                    setIsCreateGroupOpen(true);
+                    setIsFabMenuOpen(false);
+                  }}
+                  className="w-full px-4 py-3 text-left flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-stone-800 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
+                  Group
+                </button>
+                <button
+                  onClick={() => {
+                    toast("Broadcasts coming soon!", { icon: "📣" });
+                    setIsFabMenuOpen(false);
+                  }}
+                  className="w-full px-4 py-3 text-left flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-stone-800 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle><path d="M8 12h8"></path><path d="M12 8v8"></path>
+                  </svg>
+                  Broadcast
+                </button>
+              </div>
+            )}
+            
+            {/* FAB Button */}
+            <button
+              onClick={() => setIsFabMenuOpen(!isFabMenuOpen)}
+              className="w-14 h-14 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.24)] hover:scale-105 active:scale-95 transition-all duration-200"
+            >
+              <svg 
+                width="24" 
+                height="24" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className={`transition-transform duration-300 ${isFabMenuOpen ? 'rotate-45' : 'rotate-0'}`}
+              >
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 

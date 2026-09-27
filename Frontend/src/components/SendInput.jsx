@@ -12,7 +12,7 @@ import {
   decryptGroupKey
 } from "../utils/crypto";
 import { getPrivateKey } from "../utils/keyStore";
-import { BsEmojiSmile, BsX, BsPaperclip, BsLightningFill } from "react-icons/bs";
+import { BsEmojiSmile, BsX, BsPaperclip, BsLightningFill, BsPlus } from "react-icons/bs";
 
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
 
@@ -20,6 +20,10 @@ const SendInput = ({ requestTransfer }) => {
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const attachmentMenuRef = useRef(null);
+  const emojiPickerRef = useRef(null);
+  const emojiButtonRef = useRef(null);
   
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
@@ -48,9 +52,21 @@ const SendInput = ({ requestTransfer }) => {
     }
   }, [editingMessage]);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target)) {
+        setShowAttachmentMenu(false);
+      }
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target) && emojiButtonRef.current && !emojiButtonRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const onEmojiClick = (emojiObject) => {
     setMessage(prev => prev + emojiObject.emoji);
-    setShowEmojiPicker(false);
     inputRef.current?.focus();
   };
 
@@ -96,6 +112,8 @@ const SendInput = ({ requestTransfer }) => {
     if (e) e.preventDefault();
     const text = message.trim();
     if ((!text && !selectedFile) || isSending) return;
+    
+    setShowEmojiPicker(false);
 
     if (selectedUser?._id === authUser?._id) {
       toast.error("You cannot send a message to yourself.");
@@ -387,7 +405,7 @@ const SendInput = ({ requestTransfer }) => {
     <div className="relative">
       {/* Emoji Picker Popover */}
       {showEmojiPicker && (
-        <div className="absolute bottom-[calc(100%+10px)] left-4 z-50 shadow-2xl">
+        <div ref={emojiPickerRef} className="absolute bottom-[calc(100%+10px)] right-2 sm:right-6 z-50 shadow-2xl">
           <Suspense fallback={
             <div className="w-[300px] h-[350px] flex items-center justify-center bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-200 dark:border-stone-800 shadow-xl">
               <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
@@ -398,45 +416,35 @@ const SendInput = ({ requestTransfer }) => {
         </div>
       )}
 
-      {/* Premium Compact Attachment Preview Modal */}
+      {/* Sleek Compact Attachment Preview */}
       {selectedFile && (
-        <div className="absolute bottom-[calc(100%+16px)] left-4 right-4 sm:right-auto sm:left-4 sm:w-[320px] bg-white/95 dark:bg-[#121212]/95 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.12)] flex flex-col overflow-visible z-50 animate-in slide-in-from-bottom-3 fade-in duration-300">
-          
-          {/* Downward pointing triangle/tail matching the paperclip icon position */}
-          <div className="absolute -bottom-2 left-10 w-4 h-4 bg-white/95 dark:bg-[#121212]/95 border-b border-r border-gray-200/50 dark:border-white/10 rotate-45 shadow-sm z-[-1]"></div>
-
-          {/* Close Button (Floating Overlay) */}
-          <button 
-            type="button" 
-            onClick={cancelFile} 
-            className="absolute top-4 right-4 z-10 p-1.5 bg-black/40 hover:bg-black/60 text-white rounded-full transition backdrop-blur-md shadow-sm"
-          >
-            <BsX className="text-xl" />
-          </button>
-
-          {/* Content / Preview */}
-          <div className="relative h-[240px] w-full p-2">
+        <div className="absolute bottom-full left-4 sm:left-6 mb-2 flex items-center gap-3 bg-white dark:bg-[#1a1a1a] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 dark:border-stone-800 rounded-2xl p-2 pr-3 z-40 animate-in slide-in-from-bottom-2 fade-in duration-200">
+          <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-gray-100 dark:bg-black/20 flex-shrink-0 border border-black/5 dark:border-white/5">
             {filePreview ? (
-              <div className="w-full h-full bg-gray-100 dark:bg-black/40 rounded-2xl overflow-hidden relative">
-                 <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
-              </div>
+              <img src={filePreview} alt="Preview" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full bg-gray-100/80 dark:bg-white/5 rounded-2xl flex flex-col items-center justify-center gap-3 text-gray-400 dark:text-stone-500">
-                <div className="p-4 bg-white dark:bg-black/20 rounded-full shadow-sm">
-                   <BsPaperclip className="text-3xl" />
-                </div>
-                <div className="text-center px-4">
-                   <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate max-w-[250px]">{selectedFile.name}</p>
-                   <p className="text-[10px] mt-1.5 uppercase tracking-widest font-bold text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {selectedFile.name.split('.').pop()}</p>
-                </div>
+              <div className="w-full h-full flex items-center justify-center text-violet-500">
+                <BsPaperclip className="text-xl" />
               </div>
             )}
           </div>
+          
+          <div className="flex flex-col justify-center min-w-[120px] max-w-[200px]">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate leading-tight">{selectedFile.name}</p>
+            <p className="text-[11px] text-gray-500 dark:text-stone-400 mt-0.5 font-medium">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+          </div>
 
-          {/* Upload Progress Bar */}
+          <button 
+            type="button" 
+            onClick={cancelFile} 
+            className="p-1.5 ml-1 hover:bg-gray-100 dark:hover:bg-stone-800 rounded-full text-gray-400 hover:text-gray-700 dark:text-stone-400 dark:hover:text-stone-200 transition-colors"
+          >
+            <BsX className="text-xl" />
+          </button>
+          
           {uploadProgress > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-100 dark:bg-stone-800 rounded-b-3xl overflow-hidden">
-              <div className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full transition-all duration-300 ease-out" style={{ width: `${uploadProgress}%` }}></div>
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-transparent rounded-b-2xl overflow-hidden">
+              <div className="bg-violet-500 h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
             </div>
           )}
         </div>
@@ -444,7 +452,7 @@ const SendInput = ({ requestTransfer }) => {
 
       <form
         onSubmit={onSubmitHandler}
-        className="px-4 sm:px-5 py-4 pb-6 sm:pb-4 bg-white dark:bg-[#111] border-t border-gray-100 dark:border-stone-800 transition-colors flex flex-col relative"
+        className="px-2 sm:px-4 py-3 sm:py-4 pb-5 sm:pb-4 bg-white dark:bg-[#111] border-t border-gray-100 dark:border-stone-800 transition-colors flex flex-col relative w-full box-border"
       >
 
         {/* Banner for Replying / Editing */}
@@ -464,44 +472,50 @@ const SendInput = ({ requestTransfer }) => {
                         })()}
                     </span>
                 </div>
-                <button type="button" onClick={cancelAction} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-stone-700 transition">
-                    <BsX className="text-xl" />
+                <button 
+                  type="button" 
+                  onClick={cancelAction} 
+                  className="p-1.5 rounded-full text-gray-500 dark:text-stone-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-stone-700 bg-black/5 dark:bg-white/5 transition-colors"
+                >
+                    <BsX className="text-xl font-bold" />
                 </button>
             </div>
         )}
 
-        <div
-          className={`flex items-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-stone-900 border border-gray-200 dark:border-stone-700 focus-within:border-violet-400 dark:focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-100 dark:focus-within:ring-violet-900/30 transition-all ${
-              (replyingTo || editingMessage) ? "rounded-b-xl rounded-t-none" : "rounded-2xl"
-          }`}
-        >
-          {/* Emoji toggle icon */}
-          <button
-            type="button"
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className="flex-shrink-0 text-gray-400 dark:text-stone-500 hover:text-violet-500 transition-colors"
-          >
-            <BsEmojiSmile className="text-xl" />
-          </button>
+        <div className={`flex items-center gap-1 transition-all ${(replyingTo || editingMessage) ? "pt-2" : ""}`}>
+          
+          {/* Attachment Menu Wrapper */}
+          <div className="relative flex-shrink-0" ref={attachmentMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              className="flex-shrink-0 p-1 px-1.5 text-gray-500 hover:text-gray-800 dark:text-stone-400 dark:hover:text-white transition-colors"
+            >
+              <BsPlus className={`text-[28px] transition-transform duration-200 ${showAttachmentMenu ? 'rotate-45' : 'rotate-0'}`} />
+            </button>
+            
+            {showAttachmentMenu && (
+              <div className="absolute bottom-full mb-3 left-0 w-52 bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 dark:border-stone-800 py-2 animate-in slide-in-from-bottom-2 fade-in duration-200 z-50">
+                <button
+                  type="button"
+                  onClick={() => { fileInputRef.current?.click(); setShowAttachmentMenu(false); }}
+                  className="w-full px-4 py-2.5 text-left flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-stone-800 transition-colors"
+                >
+                  <BsPaperclip className="text-[17px] text-violet-500" />
+                  Upload Files
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { p2pFileInputRef.current?.click(); setShowAttachmentMenu(false); }}
+                  className="w-full px-4 py-2.5 text-left flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-stone-800 transition-colors"
+                >
+                  <BsLightningFill className="text-[17px] text-amber-500" />
+                  Fast File Sharing
+                </button>
+              </div>
+            )}
+          </div>
 
-          {/* File Attachment toggle icon */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 text-gray-400 dark:text-stone-500 hover:text-violet-500 transition-colors"
-          >
-            <BsPaperclip className="text-xl" />
-          </button>
-
-          {/* P2P Direct File Transfer icon */}
-          <button
-            type="button"
-            onClick={() => p2pFileInputRef.current?.click()}
-            className="flex-shrink-0 text-blue-500 hover:text-blue-600 transition-colors bg-blue-100/50 dark:bg-blue-900/20 p-1.5 rounded-lg ml-1 mr-1"
-            title="P2P Direct Transfer (No Size Limit)"
-          >
-            <BsLightningFill className="text-lg" />
-          </button>
           <input
             type="file"
             ref={p2pFileInputRef}
@@ -516,32 +530,42 @@ const SendInput = ({ requestTransfer }) => {
             className="hidden" 
           />
 
-          {/* Input */}
-          <input
-            ref={inputRef}
-            value={message}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            type="text"
-            placeholder={`Chat with ${selectedUser?.fullName?.split(" ")[0] || "..."}` }
-            className="flex-1 bg-transparent outline-none text-sm text-gray-800 dark:text-stone-100 placeholder-gray-400 dark:placeholder-stone-600"
-            style={{ fontFamily: "Inter, system-ui, sans-serif" }}
-            autoComplete="off"
-          />
+          {/* Input Pill */}
+          <div className="flex-1 flex items-center gap-2 bg-gray-100 dark:bg-[#1a1a1a] border border-transparent focus-within:border-violet-300 dark:focus-within:border-stone-600 rounded-full px-4 py-2 transition-all min-w-0">
+            <input
+              ref={inputRef}
+              value={message}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              type="text"
+              placeholder="Type Message"
+              className="flex-1 min-w-0 bg-transparent outline-none text-[15px] py-1 text-gray-800 dark:text-stone-100 placeholder-gray-400 dark:placeholder-stone-500"
+              style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+              autoComplete="off"
+            />
+            
+            <button
+              ref={emojiButtonRef}
+              type="button"
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="flex-shrink-0 text-gray-400 dark:text-stone-500 hover:text-gray-600 dark:hover:text-stone-300 transition-colors ml-1"
+            >
+              <BsEmojiSmile className="text-xl" />
+            </button>
+          </div>
 
           {/* Send/Save button */}
           <button
             type="submit"
             disabled={(!message.trim() && !selectedFile) || isSending}
-            className="flex-shrink-0 p-2 rounded-xl transition-all disabled:opacity-30"
-            style={{ color: (message.trim() || selectedFile) ? "#7C3AED" : "#9ca3af" }}
+            className={`flex-shrink-0 p-2.5 ml-1 mr-3 sm:mr-6 rounded-full transition-all disabled:opacity-40 disabled:scale-100 active:scale-95 ${message.trim() || selectedFile ? 'bg-violet-500 text-white shadow-md shadow-violet-500/20' : 'bg-transparent text-gray-400 dark:text-stone-500'}`}
           >
             {editingMessage ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
                 </svg>
             ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`${message.trim() || selectedFile ? 'translate-x-[1px] translate-y-[-1px]' : ''}`}>
                 <line x1="22" y1="2" x2="11" y2="13"/>
                 <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                 </svg>

@@ -11,9 +11,22 @@ const router = express.Router();
 
 // Use memory storage so we don't save to the ephemeral disk in production
 const storage = multer.memoryStorage();
+const fileFilter = (req, file, cb) => {
+    const maliciousExtensions = /\.(exe|bat|sh|js|vbs|cmd|msi|scr|pif|php|pl|py|ps1)$/i;
+    // Strip .enc if frontend adds it during encryption
+    const nameToCheck = file.originalname.replace(/\.enc$/i, '');
+    
+    if (maliciousExtensions.test(nameToCheck)) {
+        return cb(new Error("Security Error: Uploading executable or script files is strictly prohibited."), false);
+    }
+    
+    cb(null, true);
+};
+
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+    fileFilter: fileFilter
 });
 
 // We only accept one file at a time under the field name "file"

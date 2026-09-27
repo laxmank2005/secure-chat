@@ -23,7 +23,6 @@ const CreateGroupModal = ({ isOpen, onClose }) => {
   const filteredUsers = otherUsers?.filter(user => 
     !user.isGroup && (
       user.fullName.toLowerCase().includes(search.toLowerCase()) || 
-      user.email.toLowerCase().includes(search.toLowerCase()) ||
       user.mobile?.includes(search)
     )
   ) || [];
@@ -183,7 +182,7 @@ const CreateGroupModal = ({ isOpen, onClose }) => {
                         <p className={`text-sm truncate font-inter ${isSelected ? 'font-semibold text-violet-700 dark:text-violet-400' : 'font-medium text-gray-900 dark:text-white'}`}>
                           {user.fullName}
                         </p>
-                        <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                        <p className="text-xs text-gray-400 truncate">{user.mobile}</p>
                       </div>
                     </div>
                   )

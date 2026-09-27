@@ -139,7 +139,7 @@ const NewChatModal = ({ isOpen, onClose }) => {
               value={query}
               onChange={handleInputChange}
               type="text"
-              placeholder="Search by mobile number or email"
+              placeholder="Search by mobile number or name"
               className="w-full pl-11 pr-4 py-3 text-sm rounded-xl bg-gray-50 dark:bg-stone-900 border border-gray-200 dark:border-stone-700 text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-stone-500 outline-none focus:border-violet-400 dark:focus:border-violet-500 focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/30 transition-all"
               autoComplete="off"
             />
@@ -162,7 +162,7 @@ const NewChatModal = ({ isOpen, onClose }) => {
                 </svg>
               </div>
               <p className="text-sm text-gray-500 dark:text-stone-400 font-medium">
-                Enter a mobile number or email
+                Enter a mobile number or name
               </p>
               <p className="text-xs text-gray-400 dark:text-stone-500 mt-1">
                 to find someone and start chatting
@@ -182,7 +182,7 @@ const NewChatModal = ({ isOpen, onClose }) => {
                 No user found
               </p>
               <p className="text-xs text-gray-400 dark:text-stone-500 mt-1">
-                Check the mobile number or email and try again
+                Check the mobile number or name and try again
               </p>
             </div>
           )}
@@ -219,7 +219,7 @@ const NewChatModal = ({ isOpen, onClose }) => {
                   {user.fullName}
                 </p>
                 <p className="text-xs text-gray-400 dark:text-stone-500 truncate mt-0.5">
-                  {user.mobile} · {user.email}
+                  {user.mobile}
                 </p>
               </div>
 

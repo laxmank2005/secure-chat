@@ -8,7 +8,7 @@ import { BsReplyFill, BsPencilSquare, BsTrashFill, BsEmojiSmile, BsCheck2All, Bs
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-const Message = ({ message }) => {
+const Message = ({ message, isConsecutive }) => {
   const scroll = useRef();
   const containerRef = useRef();
   const dispatch = useDispatch();
@@ -24,18 +24,28 @@ const Message = ({ message }) => {
   const [isFileLoading, setIsFileLoading] = useState(false);
   const [filePayload, setFilePayload] = useState(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isProfilePicViewerOpen, setIsProfilePicViewerOpen] = useState(false);
 
-  // In a 1-on-1 chat: if the sender is NOT the selected user, it must be MY message.
-  const isMyMessage = message?.senderId?.toString() !== selectedUser?._id?.toString();
+  const getSenderIdStr = (msg) => (msg.senderId?._id ? msg.senderId._id.toString() : msg.senderId?.toString());
+  const senderIdString = getSenderIdStr(message);
+  
+  // In any chat, it's my message if the senderId matches my authUser._id
+  const isMyMessage = senderIdString === authUser?._id?.toString();
+
+  // Resolve sender info for group chats
+  let senderInfo = null;
+  if (selectedUser?.isGroup) {
+      senderInfo = selectedUser.participants?.find(p => p._id === senderIdString);
+      if (!senderInfo && message.senderObj) {
+          senderInfo = message.senderObj;
+      }
+  }
 
   // Find replied-to message if any
   const repliedMessage = message?.replyTo 
     ? messages?.find(m => m._id === message.replyTo) 
     : null;
 
-  useEffect(() => {
-    scroll.current?.scrollIntoView({ behavior: "smooth" });
-  }, [message]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -173,20 +183,23 @@ const Message = ({ message }) => {
       ref={scroll}
       className={`flex items-start gap-2.5 mb-4 ${isMyMessage ? "flex-row-reverse" : "flex-row"}`}
     >
-      {/* Other user's avatar */}
-      {!isMyMessage && (
-        <div className="flex-shrink-0 mt-0.5">
-          {selectedUser?.profilePhoto ? (
-            <img
-              src={selectedUser.profilePhoto}
-              alt={selectedUser?.fullName}
-              className="w-8 h-8 rounded-full object-cover"
-              style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.10)" }}
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white text-xs font-bold">
-              {(selectedUser?.fullName || "?").charAt(0).toUpperCase()}
-            </div>
+      {/* Other user's avatar (only in group chats and if not consecutive) */}
+      {!isMyMessage && selectedUser?.isGroup && (
+        <div className="flex-shrink-0 w-8 h-8 mt-0.5">
+          {!isConsecutive && (
+            senderInfo?.profilePhoto ? (
+              <img
+                src={senderInfo.profilePhoto}
+                alt={senderInfo?.fullName}
+                className="w-8 h-8 rounded-full object-cover cursor-pointer hover:opacity-80 transition"
+                style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.10)" }}
+                onClick={() => setIsProfilePicViewerOpen(true)}
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white text-xs font-bold">
+                {(senderInfo?.fullName || "?").charAt(0).toUpperCase()}
+              </div>
+            )
           )}
         </div>
       )}
@@ -196,26 +209,14 @@ const Message = ({ message }) => {
         ref={containerRef}
         className={`flex flex-col gap-1 max-w-[75%] ${isMyMessage ? "items-end" : "items-start"}`}
       >
-        {/* Sender label + time */}
-        {!isMyMessage && (
-          <div className="flex items-center gap-2 px-1">
+        {/* Sender label */}
+        {!isMyMessage && selectedUser?.isGroup && !isConsecutive && (
+          <div className="flex items-center gap-2 px-1 mb-0.5">
             <span
               className="text-xs font-semibold text-gray-700 dark:text-stone-300"
               style={{ fontFamily: "Inter, system-ui, sans-serif" }}
             >
-              {selectedUser?.fullName?.split(" ")[0]}
-            </span>
-            <span className="text-[10px] text-gray-400 dark:text-stone-500">{timeStr}</span>
-          </div>
-        )}
-        {isMyMessage && (
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[10px] text-gray-400 dark:text-stone-500">{timeStr}</span>
-            <span
-              className="text-xs font-semibold text-gray-700 dark:text-stone-300"
-              style={{ fontFamily: "Inter, system-ui, sans-serif" }}
-            >
-              You
+              {senderInfo?.fullName?.split(" ")[0]}
             </span>
           </div>
         )}
@@ -360,6 +361,11 @@ const Message = ({ message }) => {
             </div>
         </div>
 
+        {/* Message Time */}
+        <div className={`flex items-center px-1 mt-0.5 ${isMyMessage ? "justify-end" : "justify-start"}`}>
+          <span className="text-[10px] text-gray-400 dark:text-stone-500">{timeStr}</span>
+        </div>
+
         {/* Reactions Display */}
         {Object.keys(groupedReactions).length > 0 && (
             <div className={`flex flex-wrap gap-1 mt-0.5 ${isMyMessage ? "justify-end" : "justify-start"}`}>
@@ -381,6 +387,38 @@ const Message = ({ message }) => {
         )}
 
       </div>
+
+      {/* Profile Picture Viewer Modal */}
+      {isProfilePicViewerOpen && senderInfo?.profilePhoto && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsProfilePicViewerOpen(false);
+          }}
+        >
+          <div className="relative max-w-3xl max-h-[80vh] p-4 flex flex-col items-center">
+            <button 
+              className="absolute -top-12 right-0 p-2 text-white hover:text-gray-300 transition-colors bg-black/40 rounded-full hover:bg-black/60"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsProfilePicViewerOpen(false);
+              }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <img
+              src={senderInfo.profilePhoto}
+              alt={senderInfo.fullName}
+              className="w-full h-full max-h-[70vh] object-contain rounded-full sm:rounded-3xl shadow-2xl ring-4 ring-white/10"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (

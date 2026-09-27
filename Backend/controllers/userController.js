@@ -3,12 +3,13 @@ import { Conversation } from "../models/conversationModel.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendOTPEmail } from "../config/emailService.js";
-
+import { v2 as cloudinary } from "cloudinary";
+import stream from "stream";
 // register testing done
 export const register = async (req, res) => {
   try {
     const { fullName, email, mobile, password, confirmPassword, gender, publicKey, encryptedPrivateKey, keySalt, keyIv } = req.body;
-    
+
     if (!fullName || !email || !mobile || !password || !confirmPassword || !gender) {
       return res.status(400).json({ message: "All base fields are required" });
     }
@@ -18,18 +19,19 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: "Full name must be 3-50 characters and contain only letters." });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email.trim())) {
       return res.status(400).json({ message: "Please enter a valid email address." });
     }
 
-    const mobileRegex = /^\+\d{1,4}\d{6,14}$/;
+    const mobileRegex = /^\d{10}$/;
     if (!mobileRegex.test(mobile)) {
-      return res.status(400).json({ message: "Invalid mobile number format. Must include country code and valid phone number." });
+      return res.status(400).json({ message: "Mobile number must be exactly 10 digits and contain only numbers." });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters long." });
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({ message: "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character." });
     }
 
     if (password !== confirmPassword) {
@@ -73,15 +75,8 @@ export const register = async (req, res) => {
     });
 
     // ⚡ FIRE-AND-FORGET: Send email in background, respond immediately
-    sendOTPEmail(email, otp, fullName).catch(async (emailErr) => {
+    sendOTPEmail(email, otp, fullName).catch((emailErr) => {
       console.warn("⚠️ Background OTP email failed:", emailErr.message);
-      // Auto-verify user if email can't be sent
-      try {
-        await User.updateOne({ email }, { $set: { isEmailVerified: true }, $unset: { otp: 1, otpExpiry: 1 } });
-        console.log(`✅ Auto-verified ${email} due to email failure`);
-      } catch (dbErr) {
-        console.error("Failed to auto-verify:", dbErr.message);
-      }
     });
 
     return res.status(201).json({
@@ -224,13 +219,13 @@ export const login = async (req, res) => {
     };
 
     const token = await jwt.sign(tokenData, process.env.JWT_SECRET, {
-      expiresIn: "1d",
+      expiresIn: "30d",
     });
 
     return res
       .status(200)
       .cookie("token", token, {
-        maxAge: 1 * 24 * 60 * 60 * 1000,
+        maxAge: 30 * 24 * 60 * 60 * 1000,
         httpOnly: true,
         sameSite: "none",
         secure: process.env.NODE_ENV === "production",
@@ -287,16 +282,15 @@ export const getConversationUsers = async (req, res) => {
     const groupConversations = [];
 
     for (const conv of conversations) {
+      for (const pid of conv.participants) {
+        const pidStr = pid.toString();
+        if (!seen.has(pidStr)) {
+          seen.add(pidStr);
+          otherUserIds.push(pid);
+        }
+      }
       if (conv.isGroup) {
         groupConversations.push(conv);
-      } else {
-        for (const pid of conv.participants) {
-          const pidStr = pid.toString();
-          if (pidStr !== loggedInUserId && !seen.has(pidStr)) {
-            seen.add(pidStr);
-            otherUserIds.push(pid);
-          }
-        }
       }
     }
 
@@ -304,13 +298,13 @@ export const getConversationUsers = async (req, res) => {
     let users = [];
     if (otherUserIds.length > 0) {
       users = await User.find({ _id: { $in: otherUserIds } })
-        .select("fullName email mobile profilePhoto gender publicKey isEmailVerified")
+        .select("fullName mobile profilePhoto gender publicKey isEmailVerified")
         .lean();
     }
 
     const userMap = new Map(users.map(u => [u._id.toString(), u]));
     const orderedItems = [];
-    
+
     // Import Messages model if not already imported at top
     const { Messages } = await import("../models/messageModel.js");
 
@@ -331,13 +325,13 @@ export const getConversationUsers = async (req, res) => {
           _id: conv._id,
           isGroup: true,
           fullName: conv.groupName,
-          profilePhoto: conv.groupProfilePhoto || "", 
-          participants: conv.participants,
+          profilePhoto: conv.groupProfilePhoto || "",
+          participants: conv.participants.map(pid => userMap.get(pid.toString()) || { _id: pid }),
           encryptedGroupKeys: conv.encryptedGroupKeys,
           unreadCount: unreadCount,
           hasUnread: unreadCount > 0,
           creatorId: conv.groupAdmins[0],
-          encryptorPublicKey: null 
+          encryptorPublicKey: null
         };
 
         const myKeyObj = conv.encryptedGroupKeys.find(k => k.userId.toString() === loggedInUserId);
@@ -345,17 +339,17 @@ export const getConversationUsers = async (req, res) => {
 
         // Fetch the encryptor's public key so the member can decrypt their group key
         if (encryptorId) {
-            const encryptorIdStr = encryptorId.toString();
-            let encryptorUser = userMap.get(encryptorIdStr);
-            if (!encryptorUser) {
-                encryptorUser = await User.findById(encryptorIdStr).select("publicKey").lean();
-                if (encryptorUser) {
-                    userMap.set(encryptorIdStr, encryptorUser);
-                }
+          const encryptorIdStr = encryptorId.toString();
+          let encryptorUser = userMap.get(encryptorIdStr);
+          if (!encryptorUser) {
+            encryptorUser = await User.findById(encryptorIdStr).select("publicKey").lean();
+            if (encryptorUser) {
+              userMap.set(encryptorIdStr, encryptorUser);
             }
-            if (encryptorUser && encryptorUser.publicKey) {
-                groupItem.encryptorPublicKey = encryptorUser.publicKey;
-            }
+          }
+          if (encryptorUser && encryptorUser.publicKey) {
+            groupItem.encryptorPublicKey = encryptorUser.publicKey;
+          }
         }
 
         if (lastMessageDoc) {
@@ -374,7 +368,7 @@ export const getConversationUsers = async (req, res) => {
         // 1-on-1 Chat logic
         const otherParticipantId = conv.participants.find(id => id.toString() !== loggedInUserId);
         if (!otherParticipantId) continue;
-        
+
         const user = userMap.get(otherParticipantId.toString());
         if (user && !seen.has(`added_${user._id}`)) {
           seen.add(`added_${user._id}`); // Prevent duplicates
@@ -445,10 +439,11 @@ export const searchUsers = async (req, res) => {
       isEmailVerified: true,
       $or: [
         { mobile: { $regex: trimmedQuery + "$", $options: "i" } },
-        { email: { $regex: trimmedQuery, $options: "i" } },
+        { fullName: { $regex: trimmedQuery, $options: "i" } },
+
       ],
     })
-      .select("fullName email mobile profilePhoto gender publicKey")
+      .select("fullName mobile profilePhoto gender publicKey")
       .limit(10)
       .lean();
 
@@ -462,5 +457,49 @@ export const searchUsers = async (req, res) => {
       success: false,
       message: "Internal Server Error",
     });
+  }
+};
+
+export const updateProfilePic = async (req, res) => {
+  try {
+    const userId = req.id;
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image provided" });
+    }
+
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "chat_profile_pics",
+        transformation: [{ width: 250, height: 250, crop: "fill" }]
+      },
+      async (error, result) => {
+        if (error) {
+          console.error("Cloudinary upload error:", error);
+          return res.status(500).json({ success: false, message: "Image upload failed" });
+        }
+
+        const user = await User.findByIdAndUpdate(userId, { profilePhoto: result.secure_url }, { new: true }).select("-password");
+
+        return res.status(200).json({
+          success: true,
+          message: "Profile picture updated successfully",
+          user
+        });
+      }
+    );
+
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(req.file.buffer);
+    bufferStream.pipe(uploadStream);
+
+  } catch (error) {
+    console.error("Profile pic update error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };

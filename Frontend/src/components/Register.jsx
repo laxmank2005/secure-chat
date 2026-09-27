@@ -76,7 +76,7 @@ const Register = () => {
   const validateForm = () => {
     const nameRegex = /^[A-Za-z\s]{3,50}$/;
     if (!nameRegex.test(user.fullName.trim())) {
-      toast.error("Full name must be 3-50 characters and contain only letters.");
+      toast.error("Name must be 3-50 characters and contain only letters.");
       return false;
     }
 
@@ -415,10 +415,10 @@ const Register = () => {
               {/* Form Card */}
               <div className="bg-white dark:bg-[#111] rounded-[24px] shadow-sm sm:shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 dark:border-stone-800 p-6 sm:p-8 transition-colors">
                 <form onSubmit={onSubmithHandler} className="space-y-4">
-                  {/* Full Name */}
+                  {/* Name */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 dark:text-stone-300 mb-1.5 transition-colors">
-                      Full Name
+                      Name
                     </label>
                     <div className={`relative flex items-center rounded-xl border-2 transition-all duration-200 ${
                       focused === 'fullName' 
@@ -437,7 +437,7 @@ const Register = () => {
                         onBlur={() => setFocused('')}
                         className="flex-1 px-2 py-2.5 bg-transparent outline-none text-gray-900 dark:text-white text-sm placeholder:text-gray-400 dark:placeholder:text-stone-500"
                         type="text"
-                        placeholder="Enter your full name"
+                        placeholder="Enter your name"
                         required
                       />
                     </div>

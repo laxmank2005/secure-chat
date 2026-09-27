@@ -114,51 +114,42 @@ export const useWebRTC = () => {
         setActiveTransfer(prev => ({ ...prev, status: 'sending', progress: 0 }));
         lastProgressRef.current = 0;
         
-        const chunkSize = 64 * 1024; // 64 KB chunk size for maximum UDP stability without fragmentation
+        const chunkSize = 256 * 1024; // 256 KB chunks for maximum throughput
         let offset = 0;
-        
-        // Use FileReader to read file as ArrayBuffer incrementally to save RAM
-        const fileReader = new FileReader();
-        fileReader.onerror = error => console.error('Error reading file:', error);
-        
-        const readSlice = o => {
-            const slice = file.slice(offset, o + chunkSize);
-            fileReader.readAsArrayBuffer(slice);
-        };
 
-        // Buffer Management (CRITICAL for massive files)
-        dc.bufferedAmountLowThreshold = 1024 * 1024; // 1 MB threshold
-        dc.onbufferedamountlow = () => {
-            if (offset < file.size) {
-                readSlice(offset);
-            }
-        };
-        
-        fileReader.onload = e => {
-            if (dc.readyState !== 'open') return; // Fix for InvalidStateError if peer disconnected
+        const sendNextChunks = async () => {
+            while (offset < file.size) {
+                if (dc.readyState !== 'open') return; // Stop if disconnected
 
-            dc.send(e.target.result);
-            offset += e.target.result.byteLength;
-            
-            // PERFORMANCE: Only trigger React re-render if percentage integer changes!
-            const progressPercent = Math.round((offset / file.size) * 100);
-            if (progressPercent !== lastProgressRef.current) {
-                setActiveTransfer(prev => ({ ...prev, progress: progressPercent }));
-                lastProgressRef.current = progressPercent;
+                // Keep pushing to the C++ buffer until it hits 16MB
+                if (dc.bufferedAmount > 16 * 1024 * 1024) {
+                    return; // Wait for onbufferedamountlow
+                }
+
+                const slice = file.slice(offset, offset + chunkSize);
+                const buffer = await slice.arrayBuffer(); // Faster than FileReader
+                dc.send(buffer);
+                offset += buffer.byteLength;
+
+                // PERFORMANCE: Only trigger React re-render if percentage integer changes
+                const progressPercent = Math.round((offset / file.size) * 100);
+                if (progressPercent !== lastProgressRef.current) {
+                    setActiveTransfer(prev => ({ ...prev, progress: progressPercent }));
+                    lastProgressRef.current = progressPercent;
+                }
             }
 
-            if (offset < file.size) {
-                // If buffer is too full, pause reading. The `onbufferedamountlow` event will resume it.
-                if (dc.bufferedAmount > dc.bufferedAmountLowThreshold) return;
-                readSlice(offset);
-            } else {
+            if (offset >= file.size) {
                 toast.success(`Successfully sent ${file.name}`);
                 setTimeout(resetTransfer, 2000);
             }
         };
-        
-        // Start streaming!
-        readSlice(0);
+
+        dc.bufferedAmountLowThreshold = 8 * 1024 * 1024; // Resume when buffer drops to 8MB
+        dc.onbufferedamountlow = sendNextChunks;
+
+        // Start blazing fast streaming!
+        sendNextChunks();
     };
   };
 

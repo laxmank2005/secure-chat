@@ -16,6 +16,7 @@ const MessageContainer = () => {
   const { socket } = useSelector(store => store.socket);
   const dispatch = useDispatch();
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
+  const [isProfilePicViewerOpen, setIsProfilePicViewerOpen] = useState(false);
   const isOnline = onlineUsers?.includes(selectedUser?._id) || false;
   const isTyping = typingUsers?.includes(selectedUser?._id) || false;
 
@@ -53,20 +54,55 @@ const MessageContainer = () => {
 
   if (!selectedUser) {
     return (
-      <div className="flex-1 hidden sm:flex flex-col items-center justify-center bg-gray-50 dark:bg-[#0d0d0d] transition-colors">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      <div className="flex-1 hidden sm:flex flex-col items-center justify-center bg-gray-50 dark:bg-[#0d0d0d] transition-colors p-8">
+        <div className="text-center w-full max-w-lg">
+          {/* Custom Illustration */}
+          <div className="relative w-72 h-72 mx-auto mb-6 flex items-center justify-center">
+            <div className="absolute inset-0 bg-violet-500/10 dark:bg-violet-500/20 rounded-full blur-[60px] animate-pulse"></div>
+            <svg viewBox="0 0 200 200" className="w-full h-full z-10" xmlns="http://www.w3.org/2000/svg">
+              {/* Main central device */}
+              <rect x="65" y="40" width="70" height="120" rx="12" fill="#ffffff" stroke="#e5e7eb" strokeWidth="2" className="dark:fill-[#1a1a1a] dark:stroke-[#333]" />
+              <rect x="70" y="45" width="60" height="110" rx="8" fill="#f9fafb" className="dark:fill-[#0a0a0a]" />
+              <circle cx="100" cy="148" r="3" fill="#d1d5db" className="dark:fill-[#444]" />
+              
+              {/* Chat Bubbles */}
+              <g className="animate-[bounce_3s_ease-in-out_infinite]">
+                <rect x="25" y="60" width="55" height="32" rx="12" fill="#8b5cf6" />
+                <polygon points="80,85 90,95 70,90" fill="#8b5cf6" />
+                <circle cx="40" cy="76" r="3" fill="#ffffff" />
+                <circle cx="52" cy="76" r="3" fill="#ffffff" opacity="0.7" />
+                <circle cx="64" cy="76" r="3" fill="#ffffff" opacity="0.4" />
+              </g>
+
+              <g className="animate-[bounce_4s_ease-in-out_infinite]" style={{ animationDelay: '1s' }}>
+                <rect x="120" y="90" width="55" height="32" rx="12" fill="#10b981" />
+                <polygon points="120,115 110,125 130,120" fill="#10b981" />
+                <path d="M135 106 L155 106 M135 112 L145 112" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" />
+              </g>
+
+              <g className="animate-[bounce_3.5s_ease-in-out_infinite]" style={{ animationDelay: '0.5s' }}>
+                <rect x="40" y="115" width="45" height="26" rx="10" fill="#f59e0b" />
+                <polygon points="85,135 95,145 75,140" fill="#f59e0b" />
+                <path d="M52 128 L72 128" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+              </g>
+
+              {/* Decorative elements */}
+              <circle cx="160" cy="50" r="4" fill="#8b5cf6" opacity="0.6" className="animate-pulse" />
+              <circle cx="30" cy="150" r="6" fill="#10b981" opacity="0.4" className="animate-pulse" style={{ animationDelay: '1s' }} />
+              <path d="M165 150 L175 160 M175 150 L165 160" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" opacity="0.5" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-1"
+
+          <h2 className="text-[26px] font-bold text-gray-900 dark:text-white mb-4 tracking-tight"
             style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-            Welcome back, {authUser?.fullName?.split(' ')[0]}!
+            Hi there! It seems you had a very busy day!
           </h2>
-          <p className="text-sm text-gray-400 dark:text-stone-500">
-            Pick a conversation to start chatting
+          
+          <p className="text-[15px] text-gray-500 dark:text-stone-400 max-w-[420px] mx-auto leading-relaxed">
+            Welcome back, <span className="font-semibold text-violet-500 dark:text-violet-400">{authUser?.fullName?.split(' ')[0]}</span>.
           </p>
+
+
         </div>
       </div>
     );
@@ -77,6 +113,32 @@ const MessageContainer = () => {
       className={`flex-1 flex flex-col bg-white dark:bg-[#0d0d0d] h-full transition-colors duration-300 ${selectedUser ? 'flex' : 'hidden sm:flex'}`}
       style={{ minWidth: 0 }}
     >
+      {/* Profile Picture Viewer Modal */}
+      {isProfilePicViewerOpen && selectedUser?.profilePhoto && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setIsProfilePicViewerOpen(false)}
+        >
+          <div className="relative max-w-3xl max-h-[80vh] p-4 flex flex-col items-center">
+            <button 
+              className="absolute -top-12 right-0 p-2 text-white hover:text-gray-300 transition-colors bg-black/40 rounded-full hover:bg-black/60"
+              onClick={() => setIsProfilePicViewerOpen(false)}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <img
+              src={selectedUser.profilePhoto}
+              alt={selectedUser.fullName}
+              className="w-full h-full max-h-[70vh] object-contain rounded-full sm:rounded-3xl shadow-2xl ring-4 ring-white/10"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Chat Header ── */}
       <div
         className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-white dark:bg-[#111] border-b border-gray-100 dark:border-stone-800 transition-colors"
@@ -98,7 +160,15 @@ const MessageContainer = () => {
           </button>
 
           {/* Avatar */}
-          <div className="relative">
+          <div 
+            className="relative cursor-pointer"
+            onClick={(e) => {
+              if (selectedUser?.profilePhoto) {
+                e.stopPropagation();
+                setIsProfilePicViewerOpen(true);
+              }
+            }}
+          >
             {selectedUser?.profilePhoto ? (
               <img
                 src={selectedUser.profilePhoto}

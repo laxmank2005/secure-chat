@@ -114,7 +114,8 @@ const App = () => {
       const socketInstance = io(SOCKET_URL, {
         auth: {
           token: authUser.token
-        }
+        },
+        transports: ['websocket'] // Fix for 400 Bad Request on Render/Heroku
       });
       dispatch(setSocket(socketInstance));
       

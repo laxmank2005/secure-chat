@@ -86,7 +86,7 @@ app.use("/api/v1/user/login", authLimiter);
 app.use("/api/v1/user/register", authLimiter);
 
 // 5. Body parser & Cookie parser
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
 // 6. Data Sanitization — Express 5 compatible implementations
