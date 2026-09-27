@@ -155,29 +155,30 @@ io.on('connection', (socket) => {
     });
 
     // --- P2P WebRTC Direct File Transfer Events ---
-    socket.on('p2pTransferRequest', ({ receiverId, fileInfo, senderId }) => {
+    socket.on('p2pTransferRequest', ({ receiverId, fileInfo }) => {
         const receiverSockets = userSocketMap[receiverId];
         if (receiverSockets && receiverSockets.length > 0) {
             receiverSockets.forEach(socketId => {
-                io.to(socketId).emit('incomingP2PTransfer', { senderId, fileInfo });
+                io.to(socketId).emit('incomingP2PTransfer', { senderId: userId, fileInfo });
             });
         }
     });
 
-    socket.on('p2pTransferResponse', ({ senderId, accepted, receiverId }) => {
+    socket.on('p2pTransferResponse', ({ senderId, accepted }) => {
         const senderSockets = userSocketMap[senderId];
         if (senderSockets && senderSockets.length > 0) {
             senderSockets.forEach(socketId => {
-                io.to(socketId).emit('p2pTransferResponse', { accepted, receiverId });
+                // Ensure receiverId is the authenticated user, not spoofable
+                io.to(socketId).emit('p2pTransferResponse', { accepted, receiverId: userId });
             });
         }
     });
 
-    socket.on('p2pSignal', ({ targetId, signal, senderId }) => {
+    socket.on('p2pSignal', ({ targetId, signal }) => {
         const targetSockets = userSocketMap[targetId];
         if (targetSockets && targetSockets.length > 0) {
             targetSockets.forEach(socketId => {
-                io.to(socketId).emit('p2pSignal', { senderId, signal });
+                io.to(socketId).emit('p2pSignal', { senderId: userId, signal });
             });
         }
     });

@@ -432,15 +432,17 @@ export const searchUsers = async (req, res) => {
     }
 
     const trimmedQuery = query.trim();
+    
+    // SECURITY: Escape regex characters to prevent ReDoS attacks
+    const escapedQuery = trimmedQuery.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
     // Search by mobile (suffix match so country code isn't strictly required) OR partial email match
     const users = await User.find({
       _id: { $ne: loggedInUserId },
       isEmailVerified: true,
       $or: [
-        { mobile: { $regex: trimmedQuery + "$", $options: "i" } },
-        { fullName: { $regex: trimmedQuery, $options: "i" } },
-
+        { mobile: { $regex: escapedQuery + "$", $options: "i" } },
+        { fullName: { $regex: escapedQuery, $options: "i" } },
       ],
     })
       .select("fullName mobile profilePhoto gender publicKey")
